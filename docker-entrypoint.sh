@@ -1,26 +1,25 @@
 #!/bin/sh
 
-echo "Waiting for MySQL to be ready..."
+echo "⏳ Waiting for PostgreSQL..."
 
-# Attendre MySQL
 while ! nc -z $DB_HOST $DB_PORT; do
-  echo "MySQL is unavailable - sleeping"
+  echo "PostgreSQL is unavailable - sleeping"
   sleep 2
 done
 
-echo "MySQL is up!"
+echo "✅ PostgreSQL is up!"
 
-# Générer clé si vide
+# Générer clé si nécessaire
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
   echo "Generating application key..."
   php artisan key:generate --force
 fi
 
-# Migrations
+# Migration
 echo "Running migrations..."
 php artisan migrate --force
 
-# Cache Laravel (safe)
+# Cache
 echo "Optimizing Laravel..."
 php artisan config:clear
 php artisan config:cache

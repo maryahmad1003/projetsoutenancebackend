@@ -20,6 +20,7 @@ RUN curl -sS https://getcomposer.org/installer | php \
 
 WORKDIR /app
 
+# Copier seulement composer pour cache Docker
 COPY composer.json composer.lock ./
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -37,9 +38,10 @@ RUN composer install \
 # =========================
 FROM php:8.4-fpm-alpine
 
-# ✅ MYSQL (corrigé)
+# ✅ Installer dépendances + NETCAT (IMPORTANT)
 RUN apk add --no-cache \
     mysql-client \
+    netcat-openbsd \
     freetype-dev \
     libjpeg-turbo-dev \
     libpng-dev \
@@ -54,49 +56,44 @@ RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D lara
 
 WORKDIR /var/www/html
 
+# Copier vendor depuis build
 COPY --from=composer-build /app/vendor ./vendor
+
+# Copier projet
 COPY . .
 
-# Permissions
+# Permissions Laravel
 RUN mkdir -p storage/framework/{cache,data,sessions,testing,views} \
     && mkdir -p storage/logs \
     && mkdir -p bootstrap/cache \
     && chown -R laravel:laravel /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
-# Nettoyer cache
+# Nettoyer cache Laravel
 RUN rm -rf bootstrap/cache/*.php
 
 # =========================
-# 🔥 TON .ENV ICI
+# 🔥 .ENV MINIMAL (SAFE)
 # =========================
 RUN echo "APP_NAME=Laravel" > .env && \
-    echo "APP_ENV=local" >> .env && \
-    echo "APP_KEY=base64:QwdqG3bEA3WiJ1LAkeYbmlvoi4Nw6Mz4WtVPMnzNsDA=" >> .env && \
-    echo "APP_DEBUG=true" >> .env && \
+    echo "APP_ENV=production" >> .env && \
+    echo "APP_KEY=" >> .env && \
+    echo "APP_DEBUG=false" >> .env && \
     echo "APP_URL=http://localhost" >> .env && \
     echo "" >> .env && \
     echo "LOG_CHANNEL=stack" >> .env && \
-    echo "LOG_LEVEL=debug" >> .env && \
+    echo "LOG_LEVEL=error" >> .env && \
     echo "" >> .env && \
     echo "DB_CONNECTION=mysql" >> .env && \
     echo "DB_HOST=\${DB_HOST}" >> .env && \
-    echo "DB_PORT=3306" >> .env && \
-    echo "DB_DATABASE=PROJET_DOCSECUR" >> .env && \
-    echo "DB_USERNAME=mon_user" >> .env && \
-    echo "DB_PASSWORD=mot_de_passe" >> .env && \
+    echo "DB_PORT=\${DB_PORT}" >> .env && \
+    echo "DB_DATABASE=\${DB_DATABASE}" >> .env && \
+    echo "DB_USERNAME=\${DB_USERNAME}" >> .env && \
+    echo "DB_PASSWORD=\${DB_PASSWORD}" >> .env && \
     echo "" >> .env && \
     echo "CACHE_DRIVER=file" >> .env && \
     echo "SESSION_DRIVER=file" >> .env && \
-    echo "QUEUE_CONNECTION=sync" >> .env && \
-    echo "" >> .env && \
-    echo "MAIL_MAILER=smtp" >> .env && \
-    echo "MAIL_HOST=mailpit" >> .env && \
-    echo "MAIL_PORT=1025" >> .env && \
-    echo "" >> .env && \
-    echo "TWILIO_SID=ton_twilio_sid" >> .env && \
-    echo "TWILIO_TOKEN=ton_twilio_token" >> .env && \
-    echo "TWILIO_FROM=+221xxxxxxxx" >> .env
+    echo "QUEUE_CONNECTION=sync" >> .env
 
 RUN chown laravel:laravel .env
 
