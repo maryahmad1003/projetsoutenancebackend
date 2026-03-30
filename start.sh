@@ -1,85 +1,70 @@
 #!/bin/bash
+set -e
 
-# Générer Swagger
-php artisan l5-swagger:generate
+echo "========================================="
+echo "   DocsecurBackend - Démarrage local     "
+echo "========================================="
 
 # Créer le fichier .env si nécessaire
 if [ ! -f .env ]; then
-    echo "Creating .env file..."
-    cat > .env << EOF
-APP_NAME=Laravel
-APP_ENV=local
-APP_KEY=
-APP_DEBUG=true
-APP_URL=http://localhost
-
-LOG_CHANNEL=stack
-LOG_LEVEL=debug
-
-DB_CONNECTION=mysql
-DB_HOST=\${DB_HOST:-127.0.0.1}
-DB_PORT=\${DB_PORT:-3306}
-DB_DATABASE=\${DB_DATABASE:-PROJET_DOCSECUR}
-DB_USERNAME=\${DB_USERNAME:-mon_user}
-DB_PASSWORD=\${DB_PASSWORD:-mot_de_passe}
-
-CACHE_DRIVER=file
-SESSION_DRIVER=file
-QUEUE_CONNECTION=sync
-EOF
+    echo "📝 Création du .env depuis .env.example..."
+    cp .env.example .env
 fi
 
-# Debug DB
-echo "Database configuration:"
-echo "DB_CONNECTION: $DB_CONNECTION"
-echo "DB_HOST: $DB_HOST"
-echo "DB_PORT: $DB_PORT"
-echo "DB_DATABASE: $DB_DATABASE"
+# Afficher la configuration DB active
+echo "🗄️  Configuration base de données :"
+echo "   DB_CONNECTION : ${DB_CONNECTION:-pgsql}"
+echo "   DB_HOST       : ${DB_HOST:-non défini}"
+echo "   DB_PORT       : ${DB_PORT:-5432}"
+echo "   DB_DATABASE   : ${DB_DATABASE:-non défini}"
 
-# Générer APP_KEY si nécessaire
+# Générer APP_KEY si absent
 if [ -z "$APP_KEY" ] || [[ "$APP_KEY" != base64:* ]]; then
-    echo "Generating application key..."
+    echo "🔑 Génération de l'APP_KEY..."
     php artisan key:generate --force
 fi
 
-# Attendre MySQL
-echo "Waiting for MySQL..."
+# Tester la connexion PostgreSQL
+echo "⏳ Connexion à PostgreSQL..."
+MAX_TRIES=15
+COUNT=0
 until php -r "
 try {
-    new PDO(
-        'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE'),
-        getenv('DB_USERNAME'),
-        getenv('DB_PASSWORD')
-    );
-    echo 'MySQL connected!';
+    \$sslmode = getenv('DB_SSLMODE') ?: 'prefer';
+    \$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . (getenv('DB_PORT') ?: '5432') . ';dbname=' . getenv('DB_DATABASE') . ';sslmode=' . \$sslmode;
+    new PDO(\$dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'), [PDO::ATTR_TIMEOUT => 5]);
+    echo 'PostgreSQL connecté !';
 } catch (Exception \$e) {
     exit(1);
 }
-"; do
-    echo "MySQL not ready... waiting"
+" 2>/dev/null; do
+    COUNT=$((COUNT + 1))
+    if [ "$COUNT" -ge "$MAX_TRIES" ]; then
+        echo "❌ Impossible de se connecter à PostgreSQL après ${MAX_TRIES} tentatives."
+        exit 1
+    fi
+    echo "   PostgreSQL non disponible, tentative ${COUNT}/${MAX_TRIES}..."
     sleep 2
 done
+echo "✅ PostgreSQL prêt !"
 
-echo "MySQL is ready!"
-
-# Migration
-echo "Running migrations..."
+# Migrations
+echo "📦 Exécution des migrations..."
 php artisan migrate --force
 
-# OAuth (si utilisé)
+# OAuth keys Passport
 if [ ! -f storage/oauth-private.key ] || [ ! -f storage/oauth-public.key ]; then
-    echo "Generating OAuth keys..."
+    echo "🔐 Génération des clés OAuth Passport..."
     php artisan passport:keys --force
 fi
 
 # Optimisation
-echo "Optimizing application..."
+echo "⚡ Optimisation de l'application..."
 php artisan config:clear
 php artisan config:cache
 php artisan route:clear
 php artisan route:cache
 php artisan view:cache
 
-# Démarrage
-echo "Starting Laravel..."
+echo "✅ Prêt ! Démarrage de Laravel..."
 exec "$@"

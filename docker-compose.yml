@@ -1,26 +1,55 @@
 version: '3.8'
 
+# ─────────────────────────────────────────────────────────────
+# Docker Compose pour DÉVELOPPEMENT LOCAL
+# En production, utiliser Render + Neon PostgreSQL
+# ─────────────────────────────────────────────────────────────
+
 services:
+
+  # ── Application Laravel ──────────────────────────────────────
   app:
     build: .
+    container_name: docsecur_app
     ports:
       - "8000:8000"
     env_file:
       - .env
-    depends_on:
-      - db
-
-  db:
-    image: mysql:8.0
     environment:
-      MYSQL_DATABASE: PROJET_DOCSECUR
-      MYSQL_USER: mon_user
-      MYSQL_PASSWORD: mot_de_passe
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "3306:3306"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: docsecur
+      DB_USERNAME: docsecur_user
+      DB_PASSWORD: docsecur_pass
+      DB_SSLMODE: disable
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./storage:/var/www/html/storage
+    restart: unless-stopped
+
+  # ── PostgreSQL local (développement uniquement) ───────────────
+  db:
+    image: postgres:16-alpine
+    container_name: docsecur_db
+    environment:
+      POSTGRES_DB: docsecur
+      POSTGRES_USER: docsecur_user
+      POSTGRES_PASSWORD: docsecur_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docsecur_user -d docsecur"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
 volumes:
-  mysql_data:
+  pg_data:

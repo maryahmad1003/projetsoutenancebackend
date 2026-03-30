@@ -1,0 +1,75 @@
+services:
+  - type: web
+    name: docsecur-api
+    runtime: docker
+    plan: starter          # free tier disponible ; passer à "standard" si besoin
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      # ── Application ──────────────────────────────────────────────────────────
+      - key: APP_NAME
+        value: DocSecur
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        # ⚠️ Générer avec : php artisan key:generate --show
+        # Puis coller la valeur dans le dashboard Render > Environment
+        sync: false
+      - key: APP_URL
+        # ⚠️ Remplacer par l'URL réelle générée par Render après le déploiement
+        value: https://docsecur-api.onrender.com
+
+      # ── Base de données (Neon PostgreSQL) ─────────────────────────────────────
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        # Connexion directe (sans pooler) pour les migrations
+        value: ep-dark-dawn-an78khzb.c-6.us-east-1.aws.neon.tech
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_DATABASE
+        value: neondb
+      - key: DB_USERNAME
+        value: neondb_owner
+      - key: DB_PASSWORD
+        # ⚠️ À renseigner dans le dashboard Render > Environment (secret)
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+
+      # ── Cache / Session / Queue ───────────────────────────────────────────────
+      - key: CACHE_DRIVER
+        value: file
+      - key: SESSION_DRIVER
+        value: file
+      - key: QUEUE_CONNECTION
+        value: sync
+
+      # ── Logs (STDOUT pour Render) ─────────────────────────────────────────────
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: error
+
+      # ── Mail ──────────────────────────────────────────────────────────────────
+      - key: MAIL_MAILER
+        value: log       # Changer en "smtp" quand tu as un vrai provider SMTP
+      - key: MAIL_FROM_ADDRESS
+        value: noreply@docsecur.sn
+      - key: MAIL_FROM_NAME
+        value: DocSecur
+
+      # ── CORS ──────────────────────────────────────────────────────────────────
+      - key: CORS_ALLOWED_ORIGINS
+        # ⚠️ Remplacer par l'URL de ton frontend après déploiement
+        value: "*"
+
+      # ── Twilio SMS ────────────────────────────────────────────────────────────
+      - key: TWILIO_SID
+        sync: false   # À renseigner dans le dashboard Render
+      - key: TWILIO_TOKEN
+        sync: false   # À renseigner dans le dashboard Render
+      - key: TWILIO_FROM
+        sync: false   # Ex: +221XXXXXXXXX
