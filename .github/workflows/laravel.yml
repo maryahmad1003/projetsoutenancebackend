@@ -28,14 +28,19 @@ jobs:
     - name: 🔑 Generate key
       run: php artisan key:generate
 
-    # ✅ AJOUT IMPORTANT
+    # ✅ CONFIG SQLITE
     - name: 🗄 Configure SQLite
       run: |
+        mkdir -p database
         touch database/database.sqlite
         sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env
+
+    # ✅ IMPORTANT
+    - name: 🧹 Clear config
+      run: php artisan config:clear
 
     - name: 🗄 Run migrations
       run: php artisan migrate --force
 
     - name: 🧪 Run tests
-      run: php artisan test
+      run: php artisan test --env=testing
