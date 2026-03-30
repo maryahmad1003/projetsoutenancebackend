@@ -1,23 +1,29 @@
 #!/bin/sh
 
-echo "Waiting for database..."
+echo "Waiting for MySQL to be ready..."
 
-while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME"; do
-  sleep 1
+# Attendre MySQL
+while ! nc -z $DB_HOST $DB_PORT; do
+  echo "MySQL is unavailable - sleeping"
+  sleep 2
 done
 
-echo "Database ready"
+echo "MySQL is up!"
 
-# Nettoyer cache Laravel
-php artisan config:clear
-php artisan cache:clear
+# Générer clé si vide
+if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
+  echo "Generating application key..."
+  php artisan key:generate --force
+fi
 
-# Générer clé si absente
-php artisan key:generate --force
-
-# Migration
+# Migrations
+echo "Running migrations..."
 php artisan migrate --force
 
-echo "Starting app..."
+# Cache Laravel (safe)
+echo "Optimizing Laravel..."
+php artisan config:clear
+php artisan config:cache
 
+echo "Starting application..."
 exec "$@"
