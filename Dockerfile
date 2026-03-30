@@ -3,18 +3,36 @@ FROM composer:2.6 AS composer-build
 
 WORKDIR /app
 
+# 🔥 Installer GD (corrige ton erreur)
+RUN apk add --no-cache \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    && docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+    && docker-php-ext-install gd
+
 # Copier les fichiers de dépendances
 COPY composer.json composer.lock ./
 
-# Installer les dépendances PHP sans scripts post-install
+# Installer les dépendances PHP
 RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
+
 
 # Étape 2: Image finale pour l'application
 FROM php:8.3-fpm-alpine
 
-# Installer les extensions PHP nécessaires
-RUN apk add --no-cache postgresql-dev \
-    && docker-php-ext-install pdo pdo_pgsql
+# 🔥 Installer extensions nécessaires + GD
+RUN apk add --no-cache \
+    postgresql-dev \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    && docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+    && docker-php-ext-install pdo pdo_pgsql gd
 
 # Créer un utilisateur non-root
 RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D laravel
@@ -22,20 +40,20 @@ RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D lara
 # Définir le répertoire de travail
 WORKDIR /var/www/html
 
-# Copier les dépendances installées depuis l'étape de build
+# Copier les dépendances installées
 COPY --from=composer-build /app/vendor ./vendor
 
-# Copier le reste du code de l'application
+# Copier le reste du code
 COPY . .
 
-# Créer les répertoires nécessaires et définir les permissions
+# Créer les dossiers + permissions
 RUN mkdir -p storage/framework/{cache,data,sessions,testing,views} \
     && mkdir -p storage/logs \
     && mkdir -p bootstrap/cache \
     && chown -R laravel:laravel /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
-# Créer un fichier .env minimal pour le build
+# Créer .env minimal
 RUN echo "APP_NAME=Laravel" > .env && \
     echo "APP_ENV=production" >> .env && \
     echo "APP_KEY=" >> .env && \
@@ -56,10 +74,9 @@ RUN echo "APP_NAME=Laravel" > .env && \
     echo "SESSION_DRIVER=file" >> .env && \
     echo "QUEUE_CONNECTION=sync" >> .env
 
-# Changer les permissions du fichier .env pour l'utilisateur laravel
 RUN chown laravel:laravel .env
 
-# Générer la clé d'application et optimiser
+# Générer clé + cache
 USER laravel
 RUN php artisan key:generate --force && \
     php artisan config:cache && \
@@ -67,15 +84,15 @@ RUN php artisan key:generate --force && \
     php artisan view:cache
 USER root
 
-# Copier le script d'entrée
+# Entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Passer à l'utilisateur non-root
+# Utilisateur final
 USER laravel
 
-# Exposer le port 8000
+# Port
 EXPOSE 8000
 
-# Commande par défaut
+# Lancer app
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
