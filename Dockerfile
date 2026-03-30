@@ -32,11 +32,15 @@ FROM php:8.4-fpm-alpine
 
 # Extensions PostgreSQL + utilitaires (plus MySQL !)
 RUN apk add --no-cache \
-        postgresql-client \
+        postgresql-client postgresql-dev \
         freetype-dev libjpeg-turbo-dev libpng-dev libzip-dev \
+        icu-dev libxml2-dev oniguruma-dev \
         netcat-openbsd \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_pgsql pgsql gd zip
+    && docker-php-ext-install -j$(nproc) \
+        pdo pdo_pgsql pgsql gd zip \
+        bcmath intl xml mbstring tokenizer ctype json \
+        fileinfo dom exif openssl
 
 # Utilisateur non-root
 RUN addgroup -g 1000 laravel \

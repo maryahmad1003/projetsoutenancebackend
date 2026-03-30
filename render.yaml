@@ -4,7 +4,7 @@ services:
     runtime: docker
     plan: starter          # free tier disponible ; passer à "standard" si besoin
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       # ── Application ──────────────────────────────────────────────────────────
       - key: APP_NAME

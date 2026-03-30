@@ -28,6 +28,15 @@ use App\Http\Controllers\Api\MessageController;
 |--------------------------------------------------------------------------
 */
 
+// ── Health Check (pour Render) ──────────────────────────────────────────────
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'service' => 'DocSecur API',
+        'timestamp' => now()->toIso8601String(),
+    ]);
+});
+
 // ── Routes publiques (sans authentification) ──────────────────────────────
 Route::middleware('throttle:5,1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
