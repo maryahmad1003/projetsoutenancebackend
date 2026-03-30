@@ -146,9 +146,23 @@ class AuthController extends Controller
     // ====== MODIFIER PROFIL ======
     public function updateProfil(Request $request)
     {
-        $user = $request->user();
+        $request->validate([
+            'nom'          => 'sometimes|string|max:255',
+            'prenom'       => 'sometimes|string|max:255',
+            'telephone'    => 'sometimes|string|regex:/^[+0-9\s]{8,15}$/',
+            'langue'       => 'sometimes|in:fr,wo,en',
+            'photo_profil' => 'sometimes|image|mimes:jpg,jpeg,png,webp|max:2048',
+        ]);
 
-        $user->update($request->only(['nom', 'prenom', 'telephone', 'langue', 'photo_profil']));
+        $user = $request->user();
+        $data = $request->only(['nom', 'prenom', 'telephone', 'langue']);
+
+        if ($request->hasFile('photo_profil')) {
+            $path = $request->file('photo_profil')->store('photos_profil', 'public');
+            $data['photo_profil'] = $path;
+        }
+
+        $user->update($data);
 
         return response()->json([
             'message' => 'Profil mis à jour',

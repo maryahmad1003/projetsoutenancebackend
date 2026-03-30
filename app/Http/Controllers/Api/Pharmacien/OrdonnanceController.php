@@ -12,12 +12,30 @@ class OrdonnanceController extends Controller
     {
         $pharmacien = $request->user()->pharmacien;
 
-        $ordonnances = Prescription::where('pharmacie_id', $pharmacien->pharmacie_id)
-            ->with(['medecin.user', 'medicaments', 'consultation.dossierMedical.patient.user'])
-            ->orderBy('date_emission', 'desc')
-            ->paginate(20);
+        $query = Prescription::where('pharmacie_id', $pharmacien->pharmacie_id)
+            ->with(['medecin.user', 'medicaments', 'consultation.dossierMedical.patient.user']);
 
-        return response()->json($ordonnances);
+        if ($request->filled('statut')) {
+            $query->where('statut', $request->statut);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->whereHas('consultation.dossierMedical.patient.user', function ($q) use ($search) {
+                $q->where('nom', 'like', "%{$search}%")
+                  ->orWhere('prenom', 'like', "%{$search}%");
+            })->orWhereHas('medecin.user', function ($q) use ($search) {
+                $q->where('nom', 'like', "%{$search}%")
+                  ->orWhere('prenom', 'like', "%{$search}%");
+            });
+        }
+        if ($request->filled('date_debut')) {
+            $query->whereDate('date_emission', '>=', $request->date_debut);
+        }
+        if ($request->filled('date_fin')) {
+            $query->whereDate('date_emission', '<=', $request->date_fin);
+        }
+
+        return response()->json($query->orderBy('date_emission', 'desc')->paginate($request->get('per_page', 20)));
     }
 
     public function show(string $id)

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Laborantin\DemandeAnalyseController as LaborantinDe
 use App\Http\Controllers\Api\Laborantin\ResultatAnalyseController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ExportController;
+use App\Http\Controllers\Api\MessageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,8 +29,10 @@ use App\Http\Controllers\Api\ExportController;
 */
 
 // ── Routes publiques (sans authentification) ──────────────────────────────
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login',    [AuthController::class, 'login']);
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login',    [AuthController::class, 'login']);
+});
 
 // ── Routes protégées (avec token Passport) ────────────────────────────────
 Route::middleware('auth:api')->group(function () {
@@ -43,6 +46,15 @@ Route::middleware('auth:api')->group(function () {
     // Notifications
     Route::get('/notifications',          [NotificationController::class, 'index']);
     Route::put('/notifications/{id}/lue', [NotificationController::class, 'marquerLue']);
+
+    // ── Messagerie (tous les rôles) ───────────────────────────────────────
+    Route::prefix('messages')->group(function () {
+        Route::get('conversations',          [MessageController::class, 'conversations']);
+        Route::get('non-lus',                [MessageController::class, 'nonLus']);
+        Route::get('contacts',               [MessageController::class, 'contacts']);
+        Route::get('{userId}',               [MessageController::class, 'index']);
+        Route::post('/',                     [MessageController::class, 'store']);
+    });
 
     // ── Administrateur ────────────────────────────────────────────────────
     Route::middleware('role:administrateur')->prefix('admin')->group(function () {
@@ -62,8 +74,10 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('role:medecin')->prefix('medecin')->group(function () {
         // Patients
         Route::get('patients',         [ConsultationController::class, 'getPatients']);
+        Route::post('patients',        [DossierMedicalController::class, 'creerPatient']);
         Route::get('patients/{id}',    [ConsultationController::class, 'getPatient']);
         Route::get('patients/{id}/historique', [ConsultationController::class, 'getHistorique']);
+        Route::put('patients/{id}/update', [DossierMedicalController::class, 'updatePatient']);
 
         // Consultations
         Route::apiResource('consultations', ConsultationController::class);
@@ -74,6 +88,8 @@ Route::middleware('auth:api')->group(function () {
 
         // Téléconsultations
         Route::apiResource('teleconsultations', TeleconsultationController::class);
+        Route::post('teleconsultations/{id}/demarrer',  [TeleconsultationController::class, 'demarrer']);
+        Route::post('teleconsultations/{id}/terminer',  [TeleconsultationController::class, 'terminer']);
 
         // Demandes d'analyse
         Route::apiResource('demandes-analyse', MedecinDemandeAnalyseController::class);

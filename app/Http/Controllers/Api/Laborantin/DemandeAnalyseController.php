@@ -11,13 +11,29 @@ class DemandeAnalyseController extends Controller
     public function index(Request $request)
     {
         $laborantin = $request->user()->laborantin;
-        $demandes = DemandeAnalyse::where('laboratoire_id', $laborantin->laboratoire_id)
-            ->with(['patient.user', 'medecin.user', 'resultat'])
-            ->orderBy('urgence', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
 
-        return response()->json($demandes);
+        $query = DemandeAnalyse::where('laboratoire_id', $laborantin->laboratoire_id)
+            ->with(['patient.user', 'medecin.user', 'resultat']);
+
+        if ($request->filled('statut')) {
+            $query->where('statut', $request->statut);
+        }
+        if ($request->filled('urgence')) {
+            $query->where('urgence', $request->urgence);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->whereHas('patient.user', function ($q) use ($search) {
+                $q->where('nom', 'like', "%{$search}%")
+                  ->orWhere('prenom', 'like', "%{$search}%");
+            })->orWhere('type_analyse', 'like', "%{$search}%");
+        }
+
+        return response()->json(
+            $query->orderBy('urgence', 'desc')
+                  ->orderBy('created_at', 'desc')
+                  ->paginate($request->get('per_page', 20))
+        );
     }
 
     public function show(string $id)

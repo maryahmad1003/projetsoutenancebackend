@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,11 +11,16 @@ class Patient extends Model
 
     protected $fillable = [
         'user_id', 'num_dossier', 'date_naissance', 'sexe',
-        'adresse', 'groupe_sanguin', 'personne_contact', 'tel_contact', 'qr_code'
+        'adresse', 'groupe_sanguin', 'personne_contact', 'tel_contact', 'qr_code',
+        'taille', 'poids', 'profession', 'situation_matrimoniale', 'nombre_enfants',
+        'antecedents_medicaux', 'antecedents_chirurgicaux', 'antecedents_familiaux',
+        'allergies', 'traitement_en_cours', 'assurance', 'numero_assurance'
     ];
 
     protected $casts = [
         'date_naissance' => 'date',
+        'taille' => 'float',
+        'poids' => 'float',
     ];
 
     public function user()
@@ -45,5 +51,10 @@ class Patient extends Model
     public function demandesAnalyses()
     {
         return $this->hasMany(DemandeAnalyse::class);
+    }
+
+    public function getAgeAttribute()
+    {
+        return $this->date_naissance ? $this->date_naissance->age : null;
     }
 }

@@ -6,6 +6,10 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
+use App\Events\ResultatDisponible;
+use App\Events\OrdonnanceEnvoyee;
+use App\Listeners\NotifierPatientResultat;
+use App\Listeners\NotifierPatientOrdonnance;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -17,6 +21,12 @@ class EventServiceProvider extends ServiceProvider
     protected $listen = [
         Registered::class => [
             SendEmailVerificationNotification::class,
+        ],
+        ResultatDisponible::class => [
+            NotifierPatientResultat::class,
+        ],
+        OrdonnanceEnvoyee::class => [
+            NotifierPatientOrdonnance::class,
         ],
     ];
 
