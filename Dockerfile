@@ -57,8 +57,12 @@ RUN rm -f .env
 RUN mkdir -p storage/framework/{cache,data,sessions,testing,views} \
         storage/logs bootstrap/cache \
     && chown -R laravel:laravel /var/www/html \
-    && chmod -R 775 storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache resources/views \
     && rm -rf bootstrap/cache/*.php
+
+# Corriger les permissions pour resources (au cas où)
+RUN chown -R laravel:laravel /var/www/html/resources \
+    && chmod -R 755 /var/www/html/resources
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
