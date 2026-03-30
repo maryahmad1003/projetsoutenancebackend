@@ -11,15 +11,16 @@ services:
       - db
 
   db:
-    image: postgres:15-alpine
+    image: mysql:8.0
     environment:
-      POSTGRES_DB: laravel
-      POSTGRES_USER: laravel
-      POSTGRES_PASSWORD: password
+      MYSQL_DATABASE: PROJET_DOCSECUR
+      MYSQL_USER: mon_user
+      MYSQL_PASSWORD: mot_de_passe
+      MYSQL_ROOT_PASSWORD: root
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
 
 volumes:
-  postgres_data:
+  mysql_data:

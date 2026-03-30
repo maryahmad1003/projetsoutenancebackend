@@ -1,13 +1,13 @@
 #!/bin/sh
 
-echo "⏳ Waiting for PostgreSQL..."
+echo "⏳ Waiting for MySQL..."
 
 while ! nc -z $DB_HOST $DB_PORT; do
-  echo "PostgreSQL is unavailable - sleeping"
+  echo "MySQL is unavailable - sleeping"
   sleep 2
 done
 
-echo "✅ PostgreSQL is up!"
+echo "✅ MySQL is up!"
 
 # Générer clé si nécessaire
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
