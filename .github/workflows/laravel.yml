@@ -11,36 +11,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 📥 1. Récupérer le code
     - name: 📥 Checkout code
       uses: actions/checkout@v3
 
+    # 🐘 2. Installer PHP + extensions utiles pour ton projet
     - name: 🐘 Setup PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.2'
+        extensions: pdo, pdo_sqlite, pdo_pgsql, mbstring, intl, bcmath
+        coverage: none
 
+    # 📦 3. Installer dépendances
     - name: 📦 Install dependencies
-      run: composer install --no-progress --prefer-dist
+      run: composer install --no-progress --prefer-dist --no-interaction
 
-    - name: ⚙️ Copy .env
-      run: cp .env.example .env
+    # ⚙️ 4. Configurer .env
+    - name: ⚙️ Setup environment
+      run: |
+        cp .env.example .env
+        php artisan key:generate
 
-    - name: 🔑 Generate key
-      run: php artisan key:generate
-
-    # ✅ CONFIG SQLITE
+    # 🗄 5. Configurer SQLite pour CI (pas PostgreSQL ici)
     - name: 🗄 Configure SQLite
       run: |
         mkdir -p database
         touch database/database.sqlite
+
         sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env
+        sed -i 's/DB_DATABASE=.*/DB_DATABASE=database\/database.sqlite/' .env
 
-    # ✅ IMPORTANT
+    # 🧹 6. Nettoyer config Laravel
     - name: 🧹 Clear config
-      run: php artisan config:clear
+      run: |
+        php artisan config:clear
+        php artisan cache:clear
 
+    # 📦 7. Migrations
     - name: 🗄 Run migrations
       run: php artisan migrate --force
 
+    # 🧪 8. Tests
     - name: 🧪 Run tests
       run: php artisan test --env=testing
