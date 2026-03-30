@@ -3,7 +3,7 @@
 # =============================================================
 FROM php:8.4-cli-alpine AS composer-build
 
-RUN apk add --no-cache \
+RUN apk add --no-cache --update \
         git unzip curl \
         libpng-dev libjpeg-turbo-dev freetype-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -30,17 +30,15 @@ RUN composer install \
 # =============================================================
 FROM php:8.4-fpm-alpine
 
-# Extensions PostgreSQL + utilitaires (plus MySQL !)
-RUN apk add --no-cache \
+# Extensions PostgreSQL + utilitaires
+RUN apk add --no-cache --update \
         postgresql-client postgresql-dev \
         freetype-dev libjpeg-turbo-dev libpng-dev libzip-dev \
         icu-dev libxml2-dev oniguruma-dev \
         netcat-openbsd \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
-        pdo pdo_pgsql pgsql gd zip \
-        bcmath intl xml mbstring tokenizer ctype json \
-        fileinfo dom exif openssl
+        pdo pdo_pgsql pgsql gd zip bcmath intl
 
 # Utilisateur non-root
 RUN addgroup -g 1000 laravel \

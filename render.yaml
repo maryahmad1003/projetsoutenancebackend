@@ -5,6 +5,7 @@ services:
     plan: starter          # free tier disponible ; passer à "standard" si besoin
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
+    region: oregon         # Région la plus proche de Neon PostgreSQL
     envVars:
       # ── Application ──────────────────────────────────────────────────────────
       - key: APP_NAME
