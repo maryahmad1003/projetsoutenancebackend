@@ -1,59 +1,81 @@
-# Étape 1: Build des dépendances PHP
-FROM composer:2.6 AS composer-build
+# =========================
+# Étape 1: Composer build
+# =========================
+FROM php:8.4-cli-alpine AS composer-build
+
+# Installer outils + extensions nécessaires
+RUN apk add --no-cache \
+    git unzip curl \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    libzip-dev \
+    && docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+    && docker-php-ext-install gd zip
+
+# Installer Composer
+RUN curl -sS https://getcomposer.org/installer | php \
+    && mv composer.phar /usr/local/bin/composer
 
 WORKDIR /app
 
-# 🔥 Installer GD (corrige ton erreur)
-RUN apk add --no-cache \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    && docker-php-ext-configure gd \
-        --with-freetype \
-        --with-jpeg \
-    && docker-php-ext-install gd
-
-# Copier les fichiers de dépendances
+# Copier fichiers composer
 COPY composer.json composer.lock ./
 
-# Installer les dépendances PHP
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
+# Autoriser root pour composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Installer dépendances
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-interaction \
+    --prefer-dist \
+    --no-scripts
 
 
-# Étape 2: Image finale pour l'application
-FROM php:8.3-fpm-alpine
+# =========================
+# Étape 2: App finale
+# =========================
+FROM php:8.4-fpm-alpine
 
-# 🔥 Installer extensions nécessaires + GD
+# Installer extensions PHP nécessaires
 RUN apk add --no-cache \
     postgresql-dev \
+    postgresql-client \
     freetype-dev \
     libjpeg-turbo-dev \
     libpng-dev \
+    libzip-dev \
     && docker-php-ext-configure gd \
         --with-freetype \
         --with-jpeg \
-    && docker-php-ext-install pdo pdo_pgsql gd
+    && docker-php-ext-install pdo pdo_pgsql gd zip
 
-# Créer un utilisateur non-root
+# Créer user
 RUN addgroup -g 1000 laravel && adduser -G laravel -g laravel -s /bin/sh -D laravel
 
-# Définir le répertoire de travail
 WORKDIR /var/www/html
 
-# Copier les dépendances installées
+# Copier vendor
 COPY --from=composer-build /app/vendor ./vendor
 
-# Copier le reste du code
+# Copier projet
 COPY . .
 
-# Créer les dossiers + permissions
+# Permissions
 RUN mkdir -p storage/framework/{cache,data,sessions,testing,views} \
     && mkdir -p storage/logs \
     && mkdir -p bootstrap/cache \
     && chown -R laravel:laravel /var/www/html \
     && chmod -R 775 storage bootstrap/cache
 
-# Créer .env minimal
+# Supprimer cache Laravel (TRÈS IMPORTANT)
+RUN rm -rf bootstrap/cache/*.php
+
+# .env minimal
 RUN echo "APP_NAME=Laravel" > .env && \
     echo "APP_ENV=production" >> .env && \
     echo "APP_KEY=" >> .env && \
@@ -76,23 +98,14 @@ RUN echo "APP_NAME=Laravel" > .env && \
 
 RUN chown laravel:laravel .env
 
-# Générer clé + cache
-USER laravel
-RUN php artisan key:generate --force && \
-    php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache
-USER root
-
 # Entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Utilisateur final
 USER laravel
 
-# Port
 EXPOSE 8000
 
-# Lancer app
+ENTRYPOINT ["docker-entrypoint.sh"]
+
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
