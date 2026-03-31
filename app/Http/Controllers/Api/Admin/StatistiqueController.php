@@ -15,6 +15,37 @@ use Illuminate\Support\Facades\DB;
 
 class StatistiqueController extends Controller
 {
+    /**
+     * @OA\Get(
+     *     path="/api/admin/statistiques",
+     *     tags={"Admin - Statistiques"},
+     *     summary="Statistiques globales du système",
+     *     description="Retourne les statistiques globales : totaux, tendances mensuelles, top pathologies, répartition par rôle. Rôle requis : administrateur.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Statistiques globales",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="total_utilisateurs", type="integer", example=150),
+     *             @OA\Property(property="total_patients", type="integer", example=80),
+     *             @OA\Property(property="total_medecins", type="integer", example=20),
+     *             @OA\Property(property="total_consultations", type="integer", example=350),
+     *             @OA\Property(property="total_prescriptions", type="integer", example=200),
+     *             @OA\Property(property="total_rendez_vous", type="integer", example=120),
+     *             @OA\Property(property="total_resultats_analyses", type="integer", example=90),
+     *             @OA\Property(property="total_centres_sante", type="integer", example=10),
+     *             @OA\Property(property="consultations_ce_mois", type="integer", example=30),
+     *             @OA\Property(property="rdv_en_attente", type="integer", example=15),
+     *             @OA\Property(property="rdv_aujourdhui", type="integer", example=5),
+     *             @OA\Property(property="patients_par_mois", type="array", @OA\Items(type="object")),
+     *             @OA\Property(property="consultations_par_mois", type="array", @OA\Items(type="object")),
+     *             @OA\Property(property="top_pathologies", type="array", @OA\Items(type="object")),
+     *             @OA\Property(property="repartition_par_role", type="array", @OA\Items(type="object"))
+     *         )
+     *     ),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function index()
     {
         $stats = [
@@ -56,6 +87,31 @@ class StatistiqueController extends Controller
         return response()->json($stats);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/admin/statistiques/centre/{id}",
+     *     tags={"Admin - Statistiques"},
+     *     summary="Statistiques d'un centre de santé",
+     *     description="Retourne les statistiques d'activité pour un centre de santé spécifique. Rôle requis : administrateur.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, description="ID du centre de santé",
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Statistiques du centre",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="centre", type="string", example="Hôpital Principal de Dakar"),
+     *             @OA\Property(property="nombre_medecins", type="integer", example=12),
+     *             @OA\Property(property="total_consultations", type="integer", example=450),
+     *             @OA\Property(property="consultations_ce_mois", type="integer", example=40),
+     *             @OA\Property(property="total_prescriptions", type="integer", example=200)
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Centre non trouvé"),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function parCentre(string $id)
     {
         $centre = CentreSante::with('medecins')->findOrFail($id);

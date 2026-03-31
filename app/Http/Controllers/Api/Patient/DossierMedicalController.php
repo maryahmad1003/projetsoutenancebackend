@@ -34,6 +34,18 @@ class DossierMedicalController extends Controller
         return response()->json($patient);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/patient/dossier",
+     *     tags={"Patient - Dossier"},
+     *     summary="Dossier médical du patient connecté",
+     *     description="Retourne le dossier médical complet du patient authentifié (consultations, prescriptions, résultats d'analyses).",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Dossier médical", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=401, description="Non authentifié"),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function monDossier(Request $request)
     {
         $patient = $request->user()->patient;
@@ -44,6 +56,18 @@ class DossierMedicalController extends Controller
         return response()->json($dossier);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/patient/historique",
+     *     tags={"Patient - Dossier"},
+     *     summary="Historique des consultations du patient connecté",
+     *     description="Retourne toutes les consultations du patient authentifié, triées par date décroissante.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Historique des consultations", @OA\JsonContent(type="array", @OA\Items(type="object"))),
+     *     @OA\Response(response=401, description="Non authentifié"),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function monHistorique(Request $request)
     {
         $patient = $request->user()->patient;
@@ -78,7 +102,38 @@ class DossierMedicalController extends Controller
         return response()->json(['message' => 'Dossier mis à jour', 'dossier' => $dossier]);
     }
 
-
+    /**
+     * @OA\Post(
+     *     path="/api/medecin/patients",
+     *     tags={"Médecin - Patients"},
+     *     summary="Créer un nouveau patient",
+     *     description="Crée un compte patient avec un mot de passe temporaire généré automatiquement. Le médecin reçoit le mot de passe temporaire dans la réponse.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"nom","prenom","email","date_naissance","sexe"},
+     *             @OA\Property(property="nom", type="string", example="Sow"),
+     *             @OA\Property(property="prenom", type="string", example="Mariama"),
+     *             @OA\Property(property="email", type="string", format="email", example="mariama.sow@example.com"),
+     *             @OA\Property(property="telephone", type="string", example="+221771234567"),
+     *             @OA\Property(property="date_naissance", type="string", format="date", example="1985-03-20"),
+     *             @OA\Property(property="sexe", type="string", enum={"M","F"}, example="F"),
+     *             @OA\Property(property="adresse", type="string", example="Thiès, Médina"),
+     *             @OA\Property(property="groupe_sanguin", type="string", example="A+")
+     *         )
+     *     ),
+     *     @OA\Response(response=201, description="Patient créé",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Patient créé avec succès"),
+     *             @OA\Property(property="patient", type="object"),
+     *             @OA\Property(property="mot_de_passe", type="string", example="xK9mP2qR4t", description="Mot de passe temporaire à communiquer au patient")
+     *         )
+     *     ),
+     *     @OA\Response(response=422, description="Données invalides"),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function creerPatient(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -96,7 +151,6 @@ class DossierMedicalController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        // Mot de passe temporaire généré automatiquement
         $motDePasse = Str::random(10);
 
         $user = User::create([
@@ -133,10 +187,49 @@ class DossierMedicalController extends Controller
         ], 201);
     }
 
+    /**
+     * @OA\Put(
+     *     path="/api/medecin/patients/{id}/update",
+     *     tags={"Médecin - Patients"},
+     *     summary="Mettre à jour les informations d'un patient",
+     *     description="Met à jour les informations médicales et personnelles d'un patient.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, description="ID du patient",
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\RequestBody(
+     *         @OA\JsonContent(
+     *             @OA\Property(property="adresse", type="string"),
+     *             @OA\Property(property="groupe_sanguin", type="string"),
+     *             @OA\Property(property="personne_contact", type="string"),
+     *             @OA\Property(property="tel_contact", type="string"),
+     *             @OA\Property(property="taille", type="number"),
+     *             @OA\Property(property="poids", type="number"),
+     *             @OA\Property(property="profession", type="string"),
+     *             @OA\Property(property="situation_matrimoniale", type="string"),
+     *             @OA\Property(property="nombre_enfants", type="integer"),
+     *             @OA\Property(property="antecedents_medicaux", type="string"),
+     *             @OA\Property(property="antecedents_chirurgicaux", type="string"),
+     *             @OA\Property(property="antecedents_familiaux", type="string"),
+     *             @OA\Property(property="allergies", type="string"),
+     *             @OA\Property(property="traitement_en_cours", type="string"),
+     *             @OA\Property(property="assurance", type="string"),
+     *             @OA\Property(property="numero_assurance", type="string")
+     *         )
+     *     ),
+     *     @OA\Response(response=200, description="Patient mis à jour",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Informations patient mises à jour"),
+     *             @OA\Property(property="patient", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Patient non trouvé")
+     * )
+     */
     public function updatePatient(Request $request, string $id)
     {
         $patient = Patient::findOrFail($id);
-        
+
         $patient->update($request->only([
             'adresse', 'groupe_sanguin', 'personne_contact', 'tel_contact',
             'taille', 'poids', 'profession', 'situation_matrimoniale', 'nombre_enfants',
@@ -144,7 +237,6 @@ class DossierMedicalController extends Controller
             'allergies', 'traitement_en_cours', 'assurance', 'numero_assurance'
         ]));
 
-        // Mettre à jour le dossier médical aussi
         if ($request->has('antecedents') || $request->has('allergies_dossier') || $request->has('notes_generales')) {
             $patient->dossierMedical->update([
                 'antecedents' => $request->antecedents,

@@ -11,20 +11,39 @@ use Illuminate\Support\Facades\Storage;
 class MessageController extends Controller
 {
     /**
-     * Liste des conversations (un résumé par interlocuteur)
+     * @OA\Get(
+     *     path="/api/messages/conversations",
+     *     tags={"Messagerie"},
+     *     summary="Liste des conversations",
+     *     description="Retourne un résumé de chaque conversation (dernier message, interlocuteur, nombre de non lus).",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Liste des conversations",
+     *         @OA\JsonContent(
+     *             type="array",
+     *             @OA\Items(
+     *                 @OA\Property(property="interlocuteur_id", type="integer"),
+     *                 @OA\Property(property="interlocuteur", type="object"),
+     *                 @OA\Property(property="dernier_message", type="string"),
+     *                 @OA\Property(property="dernier_message_at", type="string", format="date-time"),
+     *                 @OA\Property(property="non_lus", type="integer")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
      */
     public function conversations(Request $request)
     {
         $userId = $request->user()->id;
 
-        // Récupérer le dernier message de chaque conversation
         $conversations = Message::where('expediteur_id', $userId)
             ->orWhere('destinataire_id', $userId)
             ->with(['expediteur', 'destinataire'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->groupBy(function ($message) use ($userId) {
-                // Clé = l'interlocuteur (pas soi-même)
                 return $message->expediteur_id === $userId
                     ? $message->destinataire_id
                     : $message->expediteur_id;
@@ -55,7 +74,21 @@ class MessageController extends Controller
     }
 
     /**
-     * Messages d'une conversation avec un utilisateur
+     * @OA\Get(
+     *     path="/api/messages/{userId}",
+     *     tags={"Messagerie"},
+     *     summary="Messages d'une conversation",
+     *     description="Retourne les messages échangés avec un utilisateur donné, et marque les messages reçus comme lus.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="userId", in="path", required=true, description="ID de l'interlocuteur",
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(name="per_page", in="query", description="Nombre de messages par page",
+     *         @OA\Schema(type="integer", default=50)
+     *     ),
+     *     @OA\Response(response=200, description="Messages de la conversation", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
      */
     public function index(Request $request, int $userId)
     {
@@ -71,7 +104,6 @@ class MessageController extends Controller
             ->orderBy('created_at', 'asc')
             ->paginate($request->get('per_page', 50));
 
-        // Marquer comme lus les messages reçus
         Message::where('expediteur_id', $userId)
             ->where('destinataire_id', $moi)
             ->where('lu', false)
@@ -81,7 +113,28 @@ class MessageController extends Controller
     }
 
     /**
-     * Envoyer un message
+     * @OA\Post(
+     *     path="/api/messages",
+     *     tags={"Messagerie"},
+     *     summary="Envoyer un message",
+     *     description="Envoie un message texte ou avec pièce jointe (image, PDF, doc). Utiliser multipart/form-data pour l'envoi de fichier.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\MediaType(
+     *             mediaType="multipart/form-data",
+     *             @OA\Schema(
+     *                 required={"destinataire_id"},
+     *                 @OA\Property(property="destinataire_id", type="integer", example=5),
+     *                 @OA\Property(property="contenu", type="string", example="Bonjour docteur, j'ai une question."),
+     *                 @OA\Property(property="fichier", type="string", format="binary", description="Fichier (jpg, png, pdf, doc, docx) max 5 Mo")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=201, description="Message envoyé", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=422, description="Données invalides"),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
      */
     public function store(Request $request)
     {
@@ -111,7 +164,19 @@ class MessageController extends Controller
     }
 
     /**
-     * Nombre de messages non lus (pour la navbar)
+     * @OA\Get(
+     *     path="/api/messages/non-lus",
+     *     tags={"Messagerie"},
+     *     summary="Nombre de messages non lus",
+     *     description="Retourne le compteur de messages non lus pour l'utilisateur connecté (utile pour la barre de navigation).",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Compteur de messages non lus",
+     *         @OA\JsonContent(@OA\Property(property="non_lus", type="integer", example=4))
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
      */
     public function nonLus(Request $request)
     {
@@ -123,8 +188,28 @@ class MessageController extends Controller
     }
 
     /**
-     * Liste des utilisateurs avec qui on peut échanger
-     * (selon les rôles — le médecin peut parler à ses patients, etc.)
+     * @OA\Get(
+     *     path="/api/messages/contacts",
+     *     tags={"Messagerie"},
+     *     summary="Liste des contacts disponibles",
+     *     description="Retourne la liste des utilisateurs avec qui l'utilisateur connecté peut échanger, selon son rôle.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Liste des contacts",
+     *         @OA\JsonContent(
+     *             type="array",
+     *             @OA\Items(
+     *                 @OA\Property(property="id", type="integer"),
+     *                 @OA\Property(property="nom", type="string"),
+     *                 @OA\Property(property="prenom", type="string"),
+     *                 @OA\Property(property="role", type="string"),
+     *                 @OA\Property(property="photo_profil", type="string", nullable=true)
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
      */
     public function contacts(Request $request)
     {

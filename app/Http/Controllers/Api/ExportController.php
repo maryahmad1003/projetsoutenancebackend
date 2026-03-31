@@ -10,6 +10,23 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class ExportController extends Controller
 {
+    /**
+     * @OA\Get(
+     *     path="/api/admin/export/patients",
+     *     tags={"Admin - Exports"},
+     *     summary="Exporter la liste des patients en CSV",
+     *     description="Télécharge un fichier CSV contenant tous les patients. Rôle requis : administrateur.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Fichier CSV des patients",
+     *         @OA\MediaType(mediaType="text/csv",
+     *             @OA\Schema(type="string", format="binary")
+     *         )
+     *     ),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function patientsCSV()
     {
         $patients = Patient::with('user')->get();
@@ -26,6 +43,23 @@ class ExportController extends Controller
         ]);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/admin/export/consultations",
+     *     tags={"Admin - Exports"},
+     *     summary="Exporter les consultations en CSV",
+     *     description="Télécharge un fichier CSV contenant toutes les consultations. Rôle requis : administrateur.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Fichier CSV des consultations",
+     *         @OA\MediaType(mediaType="text/csv",
+     *             @OA\Schema(type="string", format="binary")
+     *         )
+     *     ),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function consultationsCSV()
     {
         $consultations = Consultation::with(['medecin.user', 'dossierMedical.patient.user'])->get();
@@ -44,6 +78,23 @@ class ExportController extends Controller
         ]);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/admin/export/stats-pdf",
+     *     tags={"Admin - Exports"},
+     *     summary="Exporter les statistiques en PDF",
+     *     description="Télécharge un rapport PDF des statistiques globales. Rôle requis : administrateur.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Fichier PDF des statistiques",
+     *         @OA\MediaType(mediaType="application/pdf",
+     *             @OA\Schema(type="string", format="binary")
+     *         )
+     *     ),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function statistiquesPDF()
     {
         $data = [

@@ -17,7 +17,42 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
-    // ====== INSCRIPTION ======
+    /**
+     * @OA\Post(
+     *     path="/api/register",
+     *     tags={"Authentification"},
+     *     summary="Inscription d'un nouvel utilisateur",
+     *     description="Crée un compte utilisateur avec le rôle spécifié et génère un token d'accès.",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"nom","prenom","email","password","password_confirmation","role"},
+     *             @OA\Property(property="nom", type="string", example="Diallo"),
+     *             @OA\Property(property="prenom", type="string", example="Amadou"),
+     *             @OA\Property(property="email", type="string", format="email", example="amadou.diallo@example.com"),
+     *             @OA\Property(property="password", type="string", format="password", example="Secret123!"),
+     *             @OA\Property(property="password_confirmation", type="string", format="password", example="Secret123!"),
+     *             @OA\Property(property="telephone", type="string", example="+221771234567"),
+     *             @OA\Property(property="role", type="string", enum={"medecin","patient","administrateur","pharmacien","laborantin"}, example="patient"),
+     *             @OA\Property(property="langue", type="string", enum={"fr","wo","en"}, example="fr"),
+     *             @OA\Property(property="date_naissance", type="string", format="date", example="1990-05-15", description="Requis si rôle = patient"),
+     *             @OA\Property(property="sexe", type="string", enum={"M","F"}, example="M", description="Requis si rôle = patient"),
+     *             @OA\Property(property="adresse", type="string", example="Dakar, Plateau"),
+     *             @OA\Property(property="groupe_sanguin", type="string", example="O+")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Inscription réussie",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Inscription réussie"),
+     *             @OA\Property(property="user", type="object"),
+     *             @OA\Property(property="token", type="string")
+     *         )
+     *     ),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -89,7 +124,34 @@ class AuthController extends Controller
         ], 201);
     }
 
-    // ====== CONNEXION ======
+    /**
+     * @OA\Post(
+     *     path="/api/login",
+     *     tags={"Authentification"},
+     *     summary="Connexion utilisateur",
+     *     description="Authentifie l'utilisateur et retourne un Bearer token.",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"email","password"},
+     *             @OA\Property(property="email", type="string", format="email", example="amadou.diallo@example.com"),
+     *             @OA\Property(property="password", type="string", format="password", example="Secret123!")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Connexion réussie",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Connexion réussie"),
+     *             @OA\Property(property="user", type="object"),
+     *             @OA\Property(property="token", type="string", example="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...")
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Identifiants incorrects"),
+     *     @OA\Response(response=403, description="Compte désactivé"),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -124,7 +186,19 @@ class AuthController extends Controller
         ]);
     }
 
-    // ====== DÉCONNEXION ======
+    /**
+     * @OA\Post(
+     *     path="/api/logout",
+     *     tags={"Authentification"},
+     *     summary="Déconnexion",
+     *     description="Révoque le token de l'utilisateur connecté.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Déconnexion réussie",
+     *         @OA\JsonContent(@OA\Property(property="message", type="string", example="Déconnexion réussie"))
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
     public function logout(Request $request)
     {
         $request->user()->token()->revoke();
@@ -134,7 +208,17 @@ class AuthController extends Controller
         ]);
     }
 
-    // ====== PROFIL ======
+    /**
+     * @OA\Get(
+     *     path="/api/profil",
+     *     tags={"Authentification"},
+     *     summary="Profil de l'utilisateur connecté",
+     *     description="Retourne les informations complètes du profil avec les relations selon le rôle.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Profil retourné", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
     public function profil(Request $request)
     {
         $user = $request->user();
@@ -143,7 +227,37 @@ class AuthController extends Controller
         return response()->json($user);
     }
 
-    // ====== MODIFIER PROFIL ======
+    /**
+     * @OA\Put(
+     *     path="/api/profil",
+     *     tags={"Authentification"},
+     *     summary="Modifier le profil",
+     *     description="Met à jour les informations du profil de l'utilisateur connecté. Supporte l'upload de photo (multipart/form-data).",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         @OA\MediaType(
+     *             mediaType="multipart/form-data",
+     *             @OA\Schema(
+     *                 @OA\Property(property="nom", type="string", example="Diallo"),
+     *                 @OA\Property(property="prenom", type="string", example="Amadou"),
+     *                 @OA\Property(property="telephone", type="string", example="+221771234567"),
+     *                 @OA\Property(property="langue", type="string", enum={"fr","wo","en"}, example="fr"),
+     *                 @OA\Property(property="photo_profil", type="string", format="binary")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Profil mis à jour",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Profil mis à jour"),
+     *             @OA\Property(property="user", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié"),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function updateProfil(Request $request)
     {
         $request->validate([
@@ -170,7 +284,27 @@ class AuthController extends Controller
         ]);
     }
 
-    // ====== CHANGER LANGUE ======
+    /**
+     * @OA\Post(
+     *     path="/api/changer-langue",
+     *     tags={"Authentification"},
+     *     summary="Changer la langue de l'interface",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"langue"},
+     *             @OA\Property(property="langue", type="string", enum={"fr","wo","en"}, example="fr")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Langue changée",
+     *         @OA\JsonContent(@OA\Property(property="message", type="string", example="Langue changée en fr"))
+     *     ),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function changerLangue(Request $request)
     {
         $request->validate(['langue' => 'required|in:fr,wo,en']);

@@ -8,6 +8,27 @@ use Illuminate\Http\Request;
 
 class DemandeAnalyseController extends Controller
 {
+    /**
+     * @OA\Get(
+     *     path="/api/laborantin/demandes",
+     *     tags={"Laborantin - Demandes"},
+     *     summary="Lister les demandes d'analyse du laboratoire",
+     *     description="Retourne la liste paginée des demandes d'analyse reçues par le laboratoire du laborantin connecté, triées par urgence puis par date.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="statut", in="query", description="Filtrer par statut",
+     *         @OA\Schema(type="string", enum={"envoyee","en_cours","terminee"})
+     *     ),
+     *     @OA\Parameter(name="urgence", in="query", description="Filtrer par urgence (true/false)",
+     *         @OA\Schema(type="boolean")
+     *     ),
+     *     @OA\Parameter(name="search", in="query", description="Recherche par nom du patient ou type d'analyse",
+     *         @OA\Schema(type="string")
+     *     ),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=20)),
+     *     @OA\Response(response=200, description="Liste des demandes paginée", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function index(Request $request)
     {
         $laborantin = $request->user()->laborantin;
@@ -36,6 +57,18 @@ class DemandeAnalyseController extends Controller
         );
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/laborantin/demandes/{id}",
+     *     tags={"Laborantin - Demandes"},
+     *     summary="Détails d'une demande d'analyse",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Détails de la demande", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=404, description="Non trouvée"),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function show(string $id)
     {
         $demande = DemandeAnalyse::with(['patient.user', 'medecin.user', 'laboratoire', 'resultat'])->findOrFail($id);

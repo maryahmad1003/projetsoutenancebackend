@@ -10,6 +10,22 @@ use Illuminate\Support\Str;
 
 class TeleconsultationController extends Controller
 {
+    /**
+     * @OA\Get(
+     *     path="/api/medecin/teleconsultations",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Lister les téléconsultations",
+     *     description="Retourne la liste paginée des téléconsultations du médecin connecté.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="statut", in="query", description="Filtrer par statut",
+     *         @OA\Schema(type="string", enum={"planifiee","en_cours","terminee"})
+     *     ),
+     *     @OA\Parameter(name="search", in="query", description="Recherche par nom du patient", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=20)),
+     *     @OA\Response(response=200, description="Liste paginée des téléconsultations", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function index(Request $request)
     {
         $medecin = $request->user()->medecin;
@@ -31,6 +47,34 @@ class TeleconsultationController extends Controller
         return response()->json($query->orderBy('date_debut', 'desc')->paginate($request->get('per_page', 20)));
     }
 
+    /**
+     * @OA\Post(
+     *     path="/api/medecin/teleconsultations",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Planifier une téléconsultation",
+     *     description="Crée une téléconsultation avec un lien vidéo Jitsi généré automatiquement. Le patient est notifié.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"patient_id","date_debut"},
+     *             @OA\Property(property="patient_id", type="integer", example=1),
+     *             @OA\Property(property="consultation_id", type="integer", nullable=true),
+     *             @OA\Property(property="date_debut", type="string", format="date-time", example="2026-04-10T10:00:00"),
+     *             @OA\Property(property="motif", type="string", example="Suivi traitement paludisme")
+     *         )
+     *     ),
+     *     @OA\Response(response=201, description="Téléconsultation planifiée",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Téléconsultation planifiée"),
+     *             @OA\Property(property="teleconsultation", type="object"),
+     *             @OA\Property(property="lien_video", type="string", example="https://meet.jit.si/docsecur-abc123"),
+     *             @OA\Property(property="room_name", type="string", example="docsecur-abc123")
+     *         )
+     *     ),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function store(Request $request)
     {
         $request->validate([
@@ -53,7 +97,6 @@ class TeleconsultationController extends Controller
             'statut'          => 'planifiee',
         ]);
 
-        // Notifier le patient
         $teleconsultation->load('patient');
         Notification::create([
             'user_id'    => $teleconsultation->patient->user_id,
@@ -73,12 +116,45 @@ class TeleconsultationController extends Controller
         ], 201);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/medecin/teleconsultations/{id}",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Détails d'une téléconsultation",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Détails de la téléconsultation", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=404, description="Non trouvée")
+     * )
+     */
     public function show(string $id)
     {
         $teleconsultation = Teleconsultation::with(['medecin.user', 'patient.user', 'consultation'])->findOrFail($id);
         return response()->json($teleconsultation);
     }
 
+    /**
+     * @OA\Put(
+     *     path="/api/medecin/teleconsultations/{id}",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Modifier une téléconsultation",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\RequestBody(
+     *         @OA\JsonContent(
+     *             @OA\Property(property="statut", type="string", enum={"planifiee","en_cours","terminee"}),
+     *             @OA\Property(property="date_fin", type="string", format="date-time")
+     *         )
+     *     ),
+     *     @OA\Response(response=200, description="Téléconsultation mise à jour",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="teleconsultation", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Non trouvée")
+     * )
+     */
     public function update(Request $request, string $id)
     {
         $teleconsultation = Teleconsultation::findOrFail($id);
@@ -87,12 +163,29 @@ class TeleconsultationController extends Controller
         return response()->json(['message' => 'Téléconsultation mise à jour', 'teleconsultation' => $teleconsultation]);
     }
 
+    /**
+     * @OA\Post(
+     *     path="/api/medecin/teleconsultations/{id}/demarrer",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Démarrer une téléconsultation",
+     *     description="Passe le statut en 'en_cours' et notifie le patient avec le lien vidéo.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Téléconsultation démarrée",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Téléconsultation démarrée"),
+     *             @OA\Property(property="lien_video", type="string"),
+     *             @OA\Property(property="room_name", type="string")
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Non trouvée")
+     * )
+     */
     public function demarrer(Request $request, string $id)
     {
         $teleconsultation = Teleconsultation::with('patient')->findOrFail($id);
         $teleconsultation->update(['statut' => 'en_cours']);
 
-        // Notifier le patient que la session est prête
         Notification::create([
             'user_id'    => $teleconsultation->patient->user_id,
             'type'       => 'teleconsultation',
@@ -108,6 +201,20 @@ class TeleconsultationController extends Controller
         ]);
     }
 
+    /**
+     * @OA\Post(
+     *     path="/api/medecin/teleconsultations/{id}/terminer",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Terminer une téléconsultation",
+     *     description="Passe le statut en 'terminee' et enregistre la date de fin.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Téléconsultation terminée",
+     *         @OA\JsonContent(@OA\Property(property="message", type="string", example="Téléconsultation terminée"))
+     *     ),
+     *     @OA\Response(response=404, description="Non trouvée")
+     * )
+     */
     public function terminer(string $id)
     {
         $teleconsultation = Teleconsultation::findOrFail($id);
@@ -116,6 +223,19 @@ class TeleconsultationController extends Controller
         return response()->json(['message' => 'Téléconsultation terminée']);
     }
 
+    /**
+     * @OA\Delete(
+     *     path="/api/medecin/teleconsultations/{id}",
+     *     tags={"Médecin - Téléconsultations"},
+     *     summary="Supprimer une téléconsultation",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Supprimée",
+     *         @OA\JsonContent(@OA\Property(property="message", type="string", example="Téléconsultation supprimée"))
+     *     ),
+     *     @OA\Response(response=404, description="Non trouvée")
+     * )
+     */
     public function destroy(string $id)
     {
         Teleconsultation::findOrFail($id)->delete();

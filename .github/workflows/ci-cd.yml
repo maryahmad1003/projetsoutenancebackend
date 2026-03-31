@@ -1,0 +1,236 @@
+name: DocSecur CI/CD
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Déclencheurs : CI sur chaque push/PR vers main et develop
+#                CD uniquement sur push vers main (après succès du CI)
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — CI : Tests, Linting, Documentation Swagger
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  ci:
+    name: "CI — Tests & Qualité"
+    runs-on: ubuntu-latest
+
+    # ── Service PostgreSQL pour les tests ──────────────────────────────────────
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: docsecur_test
+          POSTGRES_USER: docsecur_ci
+          POSTGRES_PASSWORD: ci_secret_password
+        # Attendre que PostgreSQL soit prêt avant de continuer
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    # ── Variables d'environnement pour l'environnement de test ────────────────
+    env:
+      APP_NAME: "DocSecur"
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      APP_URL: "http://localhost"
+
+      # Base de données de test (PostgreSQL du service ci-dessus)
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: docsecur_test
+      DB_USERNAME: docsecur_ci
+      DB_PASSWORD: ci_secret_password
+      DB_SSLMODE: disable   # Pas de SSL en local CI
+
+      # Cache / Session / Queue en mémoire pour les tests
+      CACHE_DRIVER: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+
+      # Mail fictif en test
+      MAIL_MAILER: array
+      MAIL_FROM_ADDRESS: test@docsecur.sn
+
+      # Swagger — host fictif pour la génération en CI
+      L5_SWAGGER_CONST_HOST: "http://localhost"
+      L5_SWAGGER_GENERATE_ALWAYS: "true"
+
+      # BCrypt réduit pour des tests plus rapides
+      BCRYPT_ROUNDS: 4
+
+    steps:
+      # ── 1. Récupération du code ──────────────────────────────────────────────
+      - name: "Checkout du code"
+        uses: actions/checkout@v4
+
+      # ── 2. Installation de PHP 8.1 avec toutes les extensions nécessaires ────
+      - name: "Setup PHP 8.1"
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+          extensions: >-
+            pdo_pgsql,
+            mbstring,
+            xml,
+            ctype,
+            json,
+            bcmath,
+            tokenizer,
+            curl,
+            gd,
+            zip,
+            intl
+          coverage: none   # Pas de coverage pour garder le CI rapide
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 3. Cache des dépendances Composer ───────────────────────────────────
+      - name: "Cache Composer"
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      # ── 4. Installation des dépendances Composer ─────────────────────────────
+      - name: "Composer install"
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress
+
+      # ── 5. Préparation du fichier .env de test ───────────────────────────────
+      - name: "Copier .env.example → .env"
+        run: cp .env.example .env
+
+      # ── 6. Génération de la clé d'application ───────────────────────────────
+      - name: "Générer APP_KEY"
+        run: php artisan key:generate --force
+
+      # ── 7. Génération des clés Passport (OAuth2) ────────────────────────────
+      - name: "Générer les clés Passport"
+        run: php artisan passport:keys --force
+
+      # ── 8. Exécution des migrations sur la DB de test ────────────────────────
+      - name: "Migrations de la base de test"
+        run: php artisan migrate --force --no-interaction
+
+      # ── 9. Lancement de la suite de tests ────────────────────────────────────
+      - name: "Tests PHPUnit"
+        run: php artisan test --stop-on-failure
+
+      # ── 10. Génération de la documentation Swagger ───────────────────────────
+      - name: "Vérifier la génération Swagger"
+        run: php artisan l5-swagger:generate
+
+      # ── 11. Vérification que le fichier JSON a bien été généré ───────────────
+      - name: "Valider le fichier api-docs.json"
+        run: |
+          if [ ! -f storage/api-docs/api-docs.json ]; then
+            echo "❌ Erreur : storage/api-docs/api-docs.json non généré"
+            exit 1
+          fi
+          # Vérifier que le JSON est valide
+          python3 -c "import json; json.load(open('storage/api-docs/api-docs.json'))" \
+            && echo "✅ api-docs.json valide ($(wc -c < storage/api-docs/api-docs.json) octets)"
+
+      # ── 12. Linting PHP avec Laravel Pint ────────────────────────────────────
+      - name: "Linting avec Laravel Pint"
+        run: ./vendor/bin/pint --test
+        # --test : mode "dry-run", signale les problèmes sans modifier les fichiers
+        # Retirer --test et utiliser --dirty si vous voulez auto-corriger en CI
+
+      # ── 13. Upload du rapport Swagger en artefact (optionnel) ────────────────
+      - name: "Archiver api-docs.json"
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: swagger-docs
+          path: storage/api-docs/api-docs.json
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 — CD : Déploiement sur Render (uniquement sur push vers main)
+  # ─────────────────────────────────────────────────────────────────────────────
+  cd:
+    name: "CD — Déploiement Render"
+    runs-on: ubuntu-latest
+
+    # Condition : seulement sur push vers main ET seulement si le CI a réussi
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+      url: ${{ secrets.RENDER_APP_URL }}
+
+    steps:
+      # ── 1. Déclenchement du deploy hook Render ───────────────────────────────
+      - name: "Déclencher le déploiement Render"
+        run: |
+          echo "🚀 Déclenchement du déploiement sur Render..."
+          HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            --max-time 30 \
+            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
+
+          if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 201 ] && [ "$HTTP_STATUS" -ne 202 ]; then
+            echo "❌ Erreur : le deploy hook Render a retourné HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          echo "✅ Deploy hook déclenché avec succès (HTTP $HTTP_STATUS)"
+
+      # ── 2. Attente du démarrage du service (Render peut prendre ~2-3 min) ────
+      - name: "Attente du démarrage Render"
+        run: |
+          echo "⏳ Attente de 90 secondes pour le démarrage du service Render..."
+          sleep 90
+
+      # ── 3. Health check avec retry (10 tentatives, 30s d'intervalle) ─────────
+      - name: "Vérification health check après déploiement"
+        run: |
+          HEALTH_URL="${{ secrets.RENDER_APP_URL }}/api/health"
+          MAX_ATTEMPTS=10
+          INTERVAL=30
+          ATTEMPT=0
+
+          echo "🔍 Vérification de $HEALTH_URL"
+
+          until [ $ATTEMPT -ge $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Tentative $ATTEMPT/$MAX_ATTEMPTS..."
+
+            HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              --max-time 15 \
+              "$HEALTH_URL" || echo "000")
+
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✅ Health check OK (HTTP 200) — Déploiement réussi !"
+              exit 0
+            fi
+
+            echo "   → HTTP $HTTP_STATUS — Nouvelle tentative dans ${INTERVAL}s..."
+            sleep $INTERVAL
+          done
+
+          echo "❌ Health check échoué après $MAX_ATTEMPTS tentatives"
+          echo "   Dernière réponse de $HEALTH_URL :"
+          curl --silent --max-time 15 "$HEALTH_URL" || true
+          exit 1
+
+      # ── 4. Résumé du déploiement ─────────────────────────────────────────────
+      - name: "Résumé du déploiement"
+        if: success()
+        run: |
+          echo "🎉 Déploiement DocSecur réussi !"
+          echo "   URL de l'API : ${{ secrets.RENDER_APP_URL }}"
+          echo "   Swagger UI   : ${{ secrets.RENDER_APP_URL }}/api/documentation"
+          echo "   Commit       : ${{ github.sha }}"
+          echo "   Branche      : ${{ github.ref_name }}"
+          echo "   Déclenché par: ${{ github.actor }}"
