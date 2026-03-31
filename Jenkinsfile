@@ -27,7 +27,7 @@ pipeline {
 
         DB_CONNECTION              = 'pgsql'
         DB_HOST                    = '127.0.0.1'
-        DB_PORT                    = '5432'
+        DB_PORT                    = '5433'
         DB_DATABASE                = 'docsecur_test'
         DB_USERNAME                = 'docsecur_ci'
         DB_PASSWORD                = 'ci_secret_password'
@@ -68,7 +68,7 @@ pipeline {
                         -e POSTGRES_DB=docsecur_test \
                         -e POSTGRES_USER=docsecur_ci \
                         -e POSTGRES_PASSWORD=ci_secret_password \
-                        -p 5432:5432 \
+                        -p 5433:5432 \
                         postgres:15-alpine
 
                     echo "⏳ Attente que PostgreSQL soit prêt..."
