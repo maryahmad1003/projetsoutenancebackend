@@ -169,7 +169,7 @@ jobs:
 
     environment:
       name: production
-      url: ${{ secrets.RENDER_APP_URL }}
+      url: https://doc-secure.onrender.com
 
     steps:
       # ── 1. Déclenchement du deploy hook Render ───────────────────────────────
