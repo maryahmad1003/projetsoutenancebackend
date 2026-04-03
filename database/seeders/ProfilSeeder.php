@@ -29,13 +29,13 @@ class ProfilSeeder extends Seeder
             ->where('nom', $nom)->value('id');
 
         // ── ADMINISTRATEURS ────────────────────────────────────────────────
-        DB::table('administrateurs')->insert([
+        DB::table('administrateurs')->insertOrIgnore([
             ['user_id' => $userId('admin@docsecur.sn'),  'niveau' => 'super_admin', 'created_at' => now(), 'updated_at' => now()],
             ['user_id' => $userId('admin2@docsecur.sn'), 'niveau' => 'admin',       'created_at' => now(), 'updated_at' => now()],
         ]);
 
         // ── MÉDECINS ───────────────────────────────────────────────────────
-        DB::table('medecins')->insert([
+        DB::table('medecins')->insertOrIgnore([
             [
                 'user_id'         => $userId('medecin1@docsecur.sn'),
                 'centre_sante_id' => $centreId('Hôpital Principal de Dakar'),
@@ -222,10 +222,10 @@ class ProfilSeeder extends Seeder
             ],
         ];
 
-        DB::table('patients')->insert($patients);
+        DB::table('patients')->insertOrIgnore($patients);
 
         // ── PHARMACIENS ────────────────────────────────────────────────────
-        DB::table('pharmaciens')->insert([
+        DB::table('pharmaciens')->insertOrIgnore([
             [
                 'user_id'      => $userId('pharmacien1@docsecur.sn'),
                 'pharmacie_id' => $pharmacieId('Pharmacie du Plateau'),
@@ -243,7 +243,7 @@ class ProfilSeeder extends Seeder
         ]);
 
         // ── LABORANTINS ────────────────────────────────────────────────────
-        DB::table('laborantins')->insert([
+        DB::table('laborantins')->insertOrIgnore([
             [
                 'user_id'         => $userId('laborantin1@docsecur.sn'),
                 'laboratoire_id'  => $laboratoireId('Laboratoire National de Santé'),

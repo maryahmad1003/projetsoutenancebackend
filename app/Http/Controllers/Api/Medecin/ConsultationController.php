@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Medecin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Consultation;
+use App\Models\DossierMedical;
 use App\Models\Patient;
 use App\Models\RendezVous;
 use App\Models\Notification;
@@ -138,6 +139,42 @@ class ConsultationController extends Controller
         return response()->json($query->paginate($request->get('per_page', 10)));
     }
 
+    public function getConstantesVitales(Request $request, string $id)
+    {
+        $patient = Patient::with('dossierMedical.consultations')->findOrFail($id);
+        $dossier = $patient->dossierMedical;
+
+        if (!$dossier) {
+            return response()->json([]);
+        }
+
+        $constantes = $dossier->consultations()
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($consultation) {
+                [$tensionSystolique, $tensionDiastolique] = array_pad(
+                    explode('/', (string) $consultation->tension),
+                    2,
+                    null
+                );
+
+                return [
+                    'id' => $consultation->id,
+                    'date' => optional($consultation->date)->format('Y-m-d'),
+                    'tensionSystolique' => $tensionSystolique !== null ? (float) $tensionSystolique : null,
+                    'tensionDiastolique' => $tensionDiastolique !== null ? (float) $tensionDiastolique : null,
+                    'frequenceCardiaque' => $consultation->frequence_cardiaque,
+                    'temperature' => $consultation->temperature,
+                    'poids' => $consultation->poids,
+                    'saturationO2' => $consultation->saturation_oxygene,
+                    'glycemie' => $consultation->glycemie,
+                ];
+            })
+            ->values();
+
+        return response()->json($constantes);
+    }
+
     /**
      * @OA\Get(
      *     path="/api/medecin/consultations",
@@ -238,11 +275,25 @@ class ConsultationController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'dossier_medical_id' => 'required|exists:dossiers_medicaux,id',
-            'motif' => 'required|string',
+            'dossier_medical_id'  => 'nullable|required_without:patient_id|exists:dossiers_medicaux,id',
+            'patient_id'          => 'nullable|required_without:dossier_medical_id|exists:patients,id',
+            'motif'               => 'required|string',
+            'type_consultation'   => 'nullable|in:presentiel,teleconsultation',
+            'urgence'             => 'nullable|in:faible,moyenne,haute,critique',
+            'poids'               => 'nullable|numeric|min:1|max:500',
+            'taille'              => 'nullable|numeric|min:30|max:250',
+            'temperature'         => 'nullable|numeric|min:30|max:45',
+            'frequence_cardiaque' => 'nullable|integer|min:20|max:300',
+            'saturation_oxygene'  => 'nullable|numeric|min:50|max:100',
+            'prochain_rdv'        => 'nullable|date|after:today',
         ]);
 
         $medecin = $request->user()->medecin;
+        $dossierMedicalId = $request->dossier_medical_id;
+
+        if (!$dossierMedicalId && $request->patient_id) {
+            $dossierMedicalId = DossierMedical::where('patient_id', $request->patient_id)->value('id');
+        }
 
         $imc = null;
         if ($request->poids && $request->taille) {
@@ -251,7 +302,7 @@ class ConsultationController extends Controller
         }
 
         $consultation = Consultation::create([
-            'dossier_medical_id' => $request->dossier_medical_id,
+            'dossier_medical_id' => $dossierMedicalId,
             'medecin_id' => $medecin->id,
             'date' => now(),
             'motif' => $request->motif,
@@ -392,5 +443,37 @@ class ConsultationController extends Controller
     {
         Consultation::findOrFail($id)->delete();
         return response()->json(['message' => 'Consultation supprimée']);
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/medecin/rendez-vous",
+     *     tags={"Médecin - Rendez-vous"},
+     *     summary="Lister les rendez-vous du médecin",
+     *     description="Retourne les rendez-vous du médecin connecté. Filtre par date possible.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(name="date", in="query", description="Filtrer par date (YYYY-MM-DD)", @OA\Schema(type="string", format="date")),
+     *     @OA\Response(response=200, description="Liste des rendez-vous", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
+    public function getRendezVous(Request $request)
+    {
+        $medecin = $request->user()->medecin;
+
+        if (!$medecin) {
+            return response()->json(['message' => 'Profil médecin introuvable'], 404);
+        }
+
+        $query = RendezVous::where('medecin_id', $medecin->id)
+            ->with(['patient.user']);
+
+        if ($request->filled('date')) {
+            $query->whereDate('date_heure', $request->date);
+        }
+
+        $rdvs = $query->orderBy('date_heure', 'asc')->get();
+
+        return response()->json($rdvs);
     }
 }

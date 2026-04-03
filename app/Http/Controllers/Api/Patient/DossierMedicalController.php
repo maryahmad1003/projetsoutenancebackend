@@ -226,6 +226,57 @@ class DossierMedicalController extends Controller
      *     @OA\Response(response=404, description="Patient non trouvé")
      * )
      */
+    /**
+     * @OA\Get(
+     *     path="/api/patient/prescriptions",
+     *     tags={"Patient - Dossier"},
+     *     summary="Prescriptions du patient connecté",
+     *     description="Retourne toutes les prescriptions du patient authentifié, triées par date d'émission décroissante.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Liste des prescriptions", @OA\JsonContent(type="array", @OA\Items(type="object"))),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
+    public function mesPrescriptions(Request $request)
+    {
+        $patient = $request->user()->patient;
+        $dossier = $patient->dossierMedical;
+
+        $prescriptions = \App\Models\Prescription::whereIn(
+            'consultation_id',
+            $dossier->consultations()->pluck('id')
+        )
+            ->with(['medicaments', 'medecin.user', 'pharmacie'])
+            ->orderBy('date_emission', 'desc')
+            ->get();
+
+        return response()->json($prescriptions);
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/patient/resultats",
+     *     tags={"Patient - Dossier"},
+     *     summary="Résultats d'analyses du patient connecté",
+     *     description="Retourne tous les résultats d'analyse du patient authentifié, triés par date décroissante.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Liste des résultats d'analyses", @OA\JsonContent(type="array", @OA\Items(type="object"))),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
+    public function mesResultats(Request $request)
+    {
+        $patient = $request->user()->patient;
+        $dossier = $patient->dossierMedical;
+
+        $resultats = \App\Models\ResultatAnalyse::where('dossier_medical_id', $dossier->id)
+            ->with(['demandeAnalyse.medecin.user', 'laborantin.user'])
+            ->orderBy('date_resultat', 'desc')
+            ->get();
+
+        return response()->json($resultats);
+    }
+
     public function updatePatient(Request $request, string $id)
     {
         $patient = Patient::findOrFail($id);

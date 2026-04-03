@@ -27,7 +27,7 @@ pipeline {
 
         DB_CONNECTION              = 'pgsql'
         DB_HOST                    = '127.0.0.1'
-        DB_PORT                    = '5433'
+        DB_PORT                    = '5432'
         DB_DATABASE                = 'docsecur_test'
         DB_USERNAME                = 'docsecur_ci'
         DB_PASSWORD                = 'ci_secret_password'
@@ -52,8 +52,12 @@ pipeline {
         stage('Checkout') {
             steps {
                 cleanWs()
-                checkout scm
-                echo "✅ Code récupéré — Commit : ${env.GIT_COMMIT?.take(7)}"
+                // Clone depuis un dépôt Git accessible (utiliser HTTPS au lieu de SSH)
+                sh '''
+                    git clone --depth 1 https://github.com/maryahmad1003/projetsoutenancebackend.git . 2>/dev/null || \
+                    git clone --depth 1 https://github.com/maryahmad1003/projetsoutenancebackend.git . 
+                '''
+                echo "✅ Code récupéré depuis GitHub"
             }
         }
 
@@ -173,6 +177,16 @@ pipeline {
         stage('Déploiement Render') {
             when { branch 'main' }
             steps {
+                script {
+                    // Vérification que les credentials existent
+                    def deployHookExists = credentialsExists('RENDER_DEPLOY_HOOK_URL')
+                    def appUrlExists = credentialsExists('RENDER_APP_URL')
+                    
+                    if (!deployHookExists || !appUrlExists) {
+                        error '❌ Credentials Render manquants. Créez-les dans Jenkins > Manage Credentials'
+                    }
+                }
+                
                 withCredentials([
                     string(credentialsId: 'RENDER_DEPLOY_HOOK_URL', variable: 'DEPLOY_HOOK'),
                     string(credentialsId: 'RENDER_APP_URL', variable: 'APP_URL_RENDER')
@@ -238,12 +252,24 @@ pipeline {
                 sh 'docker rm -f docsecur_postgres_test 2>/dev/null || true'
                 echo "🧹 Conteneur PostgreSQL nettoyé"
             }
+            
+            // Nettoyage des artifacts
+            cleanWs notFailBuild: true
         }
         success {
             echo "✅ Pipeline réussi — Branche : ${env.BRANCH_NAME}"
         }
         failure {
             echo "❌ Pipeline échoué"
+            // Notification Jenkins (à configurer avec Slack/Email si nécessaire)
+            emailext (
+                subject: "❌ Échec Pipeline DocSecur - ${env.BRANCH_NAME}",
+                body: "Le pipeline CI/CD a échoué.\n\nJob: ${env.JOB_NAME}\nBuild: ${env.BUILD_NUMBER}\nURL: ${env.BUILD_URL}",
+                to: ''  // Remplacer par l'email de l'équipe
+            )
+        }
+        unstable {
+            echo "⚠️ Pipeline instable — Branche : ${env.BRANCH_NAME}"
         }
     }
 

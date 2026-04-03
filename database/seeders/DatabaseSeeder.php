@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
@@ -20,6 +21,22 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // ── Vider toutes les tables (TRUNCATE CASCADE compatible Neon.tech) ─
+        // CASCADE propage la suppression aux tables dépendantes via les FK
+        DB::statement('
+            TRUNCATE TABLE
+                tableaux_bord, messages, notifications, campagnes, vaccins,
+                resultats_analyses, demandes_analyses, prescription_medicament,
+                prescriptions, teleconsultations, consultations, rendez_vous,
+                carnets_vaccination, dossiers_medicaux,
+                laborantins, pharmaciens, administrateurs, patients, medecins,
+                medicaments, pharmacies, laboratoires, centres_sante,
+                oauth_access_tokens, oauth_refresh_tokens, oauth_auth_codes,
+                oauth_clients, oauth_personal_access_clients,
+                personal_access_tokens, users
+            RESTART IDENTITY CASCADE
+        ');
+
         $this->call([
             // ── Niveau 1 : Structures de base (sans FK) ──────────────────
             CentreSanteSeeder::class,

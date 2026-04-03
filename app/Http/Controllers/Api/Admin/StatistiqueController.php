@@ -63,14 +63,14 @@ class StatistiqueController extends Controller
             'rdv_aujourdhui' => RendezVous::whereDate('date_heure', today())->count(),
 
             'patients_par_mois' => Patient::select(
-                DB::raw('MONTH(created_at) as mois'),
+                DB::raw("EXTRACT(MONTH FROM created_at) as mois"),
                 DB::raw('COUNT(*) as total')
-            )->whereYear('created_at', now()->year)->groupBy('mois')->get(),
+            )->whereYear('created_at', now()->year)->groupBy('mois')->orderBy('mois')->get(),
 
             'consultations_par_mois' => Consultation::select(
-                DB::raw('MONTH(date) as mois'),
+                DB::raw("EXTRACT(MONTH FROM date) as mois"),
                 DB::raw('COUNT(*) as total')
-            )->whereYear('date', now()->year)->groupBy('mois')->get(),
+            )->whereYear('date', now()->year)->groupBy('mois')->orderBy('mois')->get(),
 
             'top_pathologies' => Consultation::select('diagnostic', DB::raw('COUNT(*) as total'))
                 ->whereNotNull('diagnostic')

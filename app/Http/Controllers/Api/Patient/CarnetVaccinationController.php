@@ -39,13 +39,13 @@ class CarnetVaccinationController extends Controller
     }
 
     /**
-     * @OA\Get(
-     *     path="/api/patient/vaccination/vaccins",
+     * @OA\Post(
+     *     path="/api/medecin/patients/{id}/vaccins",
      *     tags={"Patient - Vaccination"},
-     *     summary="Ajouter un vaccin au carnet (accessible via GET)",
-     *     description="Endpoint pour l'ajout d'un vaccin au carnet de vaccination d'un patient.",
+     *     summary="Ajouter un vaccin au carnet d'un patient (médecin)",
+     *     description="Permet au médecin d'enregistrer un vaccin dans le carnet de vaccination d'un patient.",
      *     security={{"bearerAuth":{}}},
-     *     @OA\Response(response=200, description="Vaccin ajouté", @OA\JsonContent(type="object")),
+     *     @OA\Response(response=201, description="Vaccin ajouté", @OA\JsonContent(type="object")),
      *     @OA\Response(response=403, description="Accès refusé")
      * )
      */
@@ -78,8 +78,31 @@ class CarnetVaccinationController extends Controller
         return $this->monCarnet($request);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/api/patient/vaccination/vaccins",
+     *     tags={"Patient - Vaccination"},
+     *     summary="Liste des vaccins du patient connecté",
+     *     description="Retourne la liste plate de tous les vaccins administrés au patient authentifié.",
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(response=200, description="Liste des vaccins administrés", @OA\JsonContent(type="array", @OA\Items(type="object"))),
+     *     @OA\Response(response=403, description="Accès refusé")
+     * )
+     */
     public function vaccins(Request $request)
     {
-        return $this->ajouterVaccin($request);
+        $patient = $request->user()->patient;
+        $carnet = CarnetVaccination::where('patient_id', $patient->id)->first();
+
+        if (!$carnet) {
+            return response()->json([]);
+        }
+
+        $vaccins = Vaccin::where('carnet_vaccination_id', $carnet->id)
+            ->with(['medecin.user'])
+            ->orderBy('date_administration', 'desc')
+            ->get();
+
+        return response()->json($vaccins);
     }
 }

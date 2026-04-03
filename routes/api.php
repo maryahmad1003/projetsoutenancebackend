@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\OtpController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\CentreSanteController;
 use App\Http\Controllers\Api\Admin\CampagneController;
@@ -43,6 +44,12 @@ Route::middleware('throttle:5,1')->group(function () {
     Route::post('/login',    [AuthController::class, 'login']);
 });
 
+// ── OTP — Authentification patient par téléphone ──────────────────────────
+Route::middleware('throttle:10,1')->prefix('auth')->group(function () {
+    Route::post('/send-otp',    [OtpController::class, 'sendOtp']);
+    Route::post('/verify-otp',  [OtpController::class, 'verifyOtp']);
+});
+
 // ── Routes protégées (avec token Passport) ────────────────────────────────
 Route::middleware('auth:api')->group(function () {
 
@@ -53,8 +60,10 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/changer-langue',  [AuthController::class, 'changerLangue']);
 
     // Notifications
-    Route::get('/notifications',          [NotificationController::class, 'index']);
-    Route::put('/notifications/{id}/lue', [NotificationController::class, 'marquerLue']);
+    Route::get('/notifications',                [NotificationController::class, 'index']);
+    Route::put('/notifications/tout-lues',      [NotificationController::class, 'marquerToutesLues']);
+    Route::put('/notifications/{id}/lue',       [NotificationController::class, 'marquerLue']);
+    Route::delete('/notifications/{id}',        [NotificationController::class, 'supprimer']);
 
     // ── Messagerie (tous les rôles) ───────────────────────────────────────
     Route::prefix('messages')->group(function () {
@@ -74,9 +83,9 @@ Route::middleware('auth:api')->group(function () {
         Route::get('statistiques/centre/{id}', [StatistiqueController::class, 'parCentre']);
 
         // Exports
-        Route::get('export/patients',       [ExportController::class, 'exportPatients']);
-        Route::get('export/consultations',  [ExportController::class, 'exportConsultations']);
-        Route::get('export/stats-pdf',      [ExportController::class, 'exportStatsPdf']);
+        Route::get('export/patients',       [ExportController::class, 'patientsCSV']);
+        Route::get('export/consultations',  [ExportController::class, 'consultationsCSV']);
+        Route::get('export/stats-pdf',      [ExportController::class, 'statistiquesPDF']);
     });
 
     // ── Médecin ───────────────────────────────────────────────────────────
@@ -86,6 +95,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('patients',        [DossierMedicalController::class, 'creerPatient']);
         Route::get('patients/{id}',    [ConsultationController::class, 'getPatient']);
         Route::get('patients/{id}/historique', [ConsultationController::class, 'getHistorique']);
+        Route::get('patients/{id}/constantes-vitales', [ConsultationController::class, 'getConstantesVitales']);
         Route::put('patients/{id}/update', [DossierMedicalController::class, 'updatePatient']);
 
         // Consultations
@@ -103,6 +113,9 @@ Route::middleware('auth:api')->group(function () {
         // Demandes d'analyse
         Route::apiResource('demandes-analyse', MedecinDemandeAnalyseController::class);
 
+        // Rendez-vous du médecin
+        Route::get('rendez-vous', [ConsultationController::class, 'getRendezVous']);
+
         // QR Code
         Route::post('qrcode/scanner', [QRCodeController::class, 'scanner']);
     });
@@ -110,10 +123,10 @@ Route::middleware('auth:api')->group(function () {
     // ── Patient ───────────────────────────────────────────────────────────
     Route::middleware('role:patient')->prefix('patient')->group(function () {
         // Dossier médical
-        Route::get('dossier',          [DossierMedicalController::class, 'show']);
-        Route::get('historique',       [DossierMedicalController::class, 'historique']);
-        Route::get('prescriptions',    [DossierMedicalController::class, 'prescriptions']);
-        Route::get('resultats',        [DossierMedicalController::class, 'resultats']);
+        Route::get('dossier',          [DossierMedicalController::class, 'monDossier']);
+        Route::get('historique',       [DossierMedicalController::class, 'monHistorique']);
+        Route::get('prescriptions',    [DossierMedicalController::class, 'mesPrescriptions']);
+        Route::get('resultats',        [DossierMedicalController::class, 'mesResultats']);
 
         // Carnet de vaccination
         Route::get('vaccination',           [CarnetVaccinationController::class, 'show']);

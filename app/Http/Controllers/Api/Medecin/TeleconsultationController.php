@@ -100,11 +100,11 @@ class TeleconsultationController extends Controller
         $teleconsultation->load('patient');
         Notification::create([
             'user_id'    => $teleconsultation->patient->user_id,
-            'type'       => 'teleconsultation',
+            'type'       => 'rappel_rdv',
             'message'    => 'Une téléconsultation a été planifiée le '
                             . \Carbon\Carbon::parse($request->date_debut)->format('d/m/Y à H:i')
                             . ' par Dr. ' . $request->user()->nom . '. Lien : ' . $lienVideo,
-            'canal'      => 'application',
+            'canal'      => 'push',
             'date_envoi' => now(),
         ]);
 
@@ -188,9 +188,9 @@ class TeleconsultationController extends Controller
 
         Notification::create([
             'user_id'    => $teleconsultation->patient->user_id,
-            'type'       => 'teleconsultation',
+            'type'       => 'rappel_rdv',
             'message'    => 'Votre téléconsultation vient de démarrer. Rejoignez maintenant : ' . $teleconsultation->lien_video,
-            'canal'      => 'application',
+            'canal'      => 'push',
             'date_envoi' => now(),
         ]);
 
