@@ -4,22 +4,15 @@ namespace App\Http\Controllers\Api\Patient;
 
 use App\Http\Controllers\Controller;
 use App\Models\RendezVous;
+use App\Models\Medecin;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class RendezVousController extends Controller
 {
-    /**
-     * @OA\Get(
-     *     path="/api/patient/rendez-vous",
-     *     tags={"Patient - Rendez-vous"},
-     *     summary="Lister les rendez-vous du patient connecté",
-     *     description="Retourne la liste paginée des rendez-vous du patient authentifié, triés par date décroissante.",
-     *     security={{"bearerAuth":{}}},
-     *     @OA\Parameter(name="page", in="query", @OA\Schema(type="integer", default=1)),
-     *     @OA\Response(response=200, description="Liste des rendez-vous", @OA\JsonContent(type="object")),
-     *     @OA\Response(response=403, description="Accès refusé")
-     * )
-     */
+    public function __construct(private NotificationService $notificationService) {}
+
     public function index(Request $request)
     {
         $patient = $request->user()->patient;
@@ -31,34 +24,6 @@ class RendezVousController extends Controller
         return response()->json($rdvs);
     }
 
-    /**
-     * @OA\Post(
-     *     path="/api/patient/rendez-vous",
-     *     tags={"Patient - Rendez-vous"},
-     *     summary="Prendre un rendez-vous",
-     *     description="Crée un nouveau rendez-vous avec un médecin. La date doit être dans le futur.",
-     *     security={{"bearerAuth":{}}},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"medecin_id","date_heure","motif"},
-     *             @OA\Property(property="medecin_id", type="integer", example=1),
-     *             @OA\Property(property="date_heure", type="string", format="date-time", example="2026-04-15T09:30:00"),
-     *             @OA\Property(property="motif", type="string", example="Consultation générale"),
-     *             @OA\Property(property="duree", type="integer", default=30, description="Durée en minutes"),
-     *             @OA\Property(property="type", type="string", enum={"consultation","suivi","urgence","teleconsultation"}, default="consultation")
-     *         )
-     *     ),
-     *     @OA\Response(response=201, description="Rendez-vous créé",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="Rendez-vous créé"),
-     *             @OA\Property(property="rendez_vous", type="object")
-     *         )
-     *     ),
-     *     @OA\Response(response=422, description="Données invalides"),
-     *     @OA\Response(response=403, description="Accès refusé")
-     * )
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -68,17 +33,58 @@ class RendezVousController extends Controller
             'type' => 'nullable|in:consultation,suivi,urgence,teleconsultation',
         ]);
 
+        $medecin = Medecin::with('user')->findOrFail($request->medecin_id);
+        $type = $request->type ?? 'consultation';
+        $dateHeure = $request->date_heure;
+
+        if ($type !== 'teleconsultation') {
+            if (!$medecin->isAvailableOn($dateHeure)) {
+                return response()->json([
+                    'message' => 'Ce créneau horaire n\'est pas disponible. Veuillez choisir un autre horaire.',
+                    'disponible' => false,
+                ], 422);
+            }
+        }
+
         $rdv = RendezVous::create([
             'patient_id' => $request->user()->patient->id,
             'medecin_id' => $request->medecin_id,
-            'date_heure' => $request->date_heure,
+            'date_heure' => $type === 'teleconsultation' ? null : $dateHeure,
             'duree' => $request->duree ?? 30,
             'motif' => $request->motif,
             'statut' => 'en_attente',
-            'type' => $request->type ?? 'consultation',
+            'type' => $type,
         ]);
 
-        return response()->json(['message' => 'Rendez-vous créé', 'rendez_vous' => $rdv->load('medecin.user')], 201);
+        $medecinUser = $medecin->user;
+        $patientUser = $request->user();
+        
+        if ($type === 'teleconsultation') {
+            $this->notificationService->envoyer(
+                $medecinUser,
+                'rendez_vous',
+                'Nouvelle demande de téléconsultation de ' . $patientUser->prenom . ' ' . $patientUser->nom . 
+                '. Motif: ' . $request->motif . '. Veuillez définir la date et l\'heure.',
+                'application'
+            );
+        } else {
+            $this->notificationService->envoyer(
+                $medecinUser,
+                'rendez_vous',
+                'Nouveau rendez-vous de ' . $patientUser->prenom . ' ' . $patientUser->nom . 
+                ' le ' . \Carbon\Carbon::parse($dateHeure)->format('d/m/Y à H:i') . 
+                '. Motif: ' . $request->motif,
+                'application'
+            );
+        }
+
+        Log::info('[RDV] Nouveau rendez-vous créé pour médecin ' . $medecin->id . ' par patient ' . $request->user()->patient->id . ' (type: ' . $type . ')');
+
+        return response()->json([
+            'message' => $type === 'teleconsultation' ? 'Demande de téléconsultation créée. Le médecin définira la date et l\'heure.' : 'Rendez-vous créé et médecin notifié',
+            'rendez_vous' => $rdv->load('medecin.user'),
+            'statut' => 'en_attente',
+        ], 201);
     }
 
     public function show(string $id)
@@ -148,6 +154,45 @@ class RendezVousController extends Controller
         $rdv->update(['statut' => 'annule']);
 
         return response()->json(['message' => 'Rendez-vous annulé']);
+    }
+
+    public function confirmer(string $id)
+    {
+        $rdv = RendezVous::with(['medecin.user'])->findOrFail($id);
+        $patient = auth()->user()->patient;
+
+        if ($rdv->patient_id !== $patient->id) {
+            return response()->json(['message' => 'Non autorisé'], 403);
+        }
+
+        if (!$rdv->date_heure) {
+            return response()->json(['message' => 'Aucune date définie pour ce rendez-vous'], 400);
+        }
+
+        if ($rdv->statut !== 'en_attente') {
+            return response()->json(['message' => 'Ce rendez-vous ne peut pas être confirmé'], 400);
+        }
+
+        $rdv->update(['statut' => 'confirme']);
+
+        $medecinUser = $rdv->medecin->user;
+        $patientUser = auth()->user();
+        
+        $this->notificationService->envoyer(
+            $medecinUser,
+            'rendez_vous',
+            'Le patient ' . $patientUser->prenom . ' ' . $patientUser->nom . 
+            ' a confirmé la téléconsultation du ' . 
+            \Carbon\Carbon::parse($rdv->date_heure)->format('d/m/Y à H:i'),
+            'application'
+        );
+
+        Log::info('[RDV] Rendez-vous ' . $id . ' confirmé par le patient ' . $patient->id);
+
+        return response()->json([
+            'message' => 'Rendez-vous confirmé',
+            'rendez_vous' => $rdv,
+        ]);
     }
 
     public function destroy(string $id)

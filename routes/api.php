@@ -22,6 +22,12 @@ use App\Http\Controllers\Api\Laborantin\ResultatAnalyseController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\IoT\ConstantesVitalesController;
+use App\Http\Controllers\Api\Fhir\FhirController;
+use App\Http\Controllers\Api\PushNotificationController;
+use App\Http\Controllers\Api\Medecin\HoraireController;
+use App\Http\Controllers\Api\MedecinController;
+use App\Http\Controllers\Api\ChatbotController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,7 +35,7 @@ use App\Http\Controllers\Api\MessageController;
 |--------------------------------------------------------------------------
 */
 
-// ── Health Check (pour Render) ──────────────────────────────────────────────
+// Health Check (pour Render)
 Route::get('/health', function () {
     return response()->json([
         'status' => 'ok',
@@ -38,19 +44,22 @@ Route::get('/health', function () {
     ]);
 });
 
-// ── Routes publiques (sans authentification) ──────────────────────────────
+// Routes publiques (sans authentification)
 Route::middleware('throttle:5,1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login',    [AuthController::class, 'login']);
 });
 
-// ── OTP — Authentification patient par téléphone ──────────────────────────
+// OTP — Authentification patient par téléphone
 Route::middleware('throttle:10,1')->prefix('auth')->group(function () {
     Route::post('/send-otp',    [OtpController::class, 'sendOtp']);
     Route::post('/verify-otp',  [OtpController::class, 'verifyOtp']);
 });
 
-// ── Routes protégées (avec token Passport) ────────────────────────────────
+// Liste des médecins disponibles (public)
+Route::get('/medecins', [MedecinController::class, 'liste']);
+
+// Routes protègees (avec token Passport)
 Route::middleware('auth:api')->group(function () {
 
     // Auth
@@ -59,13 +68,18 @@ Route::middleware('auth:api')->group(function () {
     Route::put('/profil',           [AuthController::class, 'updateProfil']);
     Route::post('/changer-langue',  [AuthController::class, 'changerLangue']);
 
+    // Push Notifications
+    Route::post('/notifications/subscribe',   [PushNotificationController::class, 'subscribe']);
+    Route::post('/notifications/unsubscribe',   [PushNotificationController::class, 'unsubscribe']);
+    Route::post('/notifications/send',        [PushNotificationController::class, 'send']);
+
     // Notifications
     Route::get('/notifications',                [NotificationController::class, 'index']);
     Route::put('/notifications/tout-lues',      [NotificationController::class, 'marquerToutesLues']);
     Route::put('/notifications/{id}/lue',       [NotificationController::class, 'marquerLue']);
     Route::delete('/notifications/{id}',        [NotificationController::class, 'supprimer']);
 
-    // ── Messagerie (tous les rôles) ───────────────────────────────────────
+    // Messagerie (tous les rôles)
     Route::prefix('messages')->group(function () {
         Route::get('conversations',          [MessageController::class, 'conversations']);
         Route::get('non-lus',                [MessageController::class, 'nonLus']);
@@ -74,7 +88,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/',                     [MessageController::class, 'store']);
     });
 
-    // ── Administrateur ────────────────────────────────────────────────────
+    // Administrateur
     Route::middleware('role:administrateur')->prefix('admin')->group(function () {
         Route::apiResource('utilisateurs',   UserManagementController::class);
         Route::apiResource('centres-sante',  CentreSanteController::class);
@@ -88,7 +102,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('export/stats-pdf',      [ExportController::class, 'statistiquesPDF']);
     });
 
-    // ── Médecin ───────────────────────────────────────────────────────────
+    // Medecin
     Route::middleware('role:medecin')->prefix('medecin')->group(function () {
         // Patients
         Route::get('patients',         [ConsultationController::class, 'getPatients']);
@@ -113,14 +127,22 @@ Route::middleware('auth:api')->group(function () {
         // Demandes d'analyse
         Route::apiResource('demandes-analyse', MedecinDemandeAnalyseController::class);
 
-        // Rendez-vous du médecin
+        //Rendez-vous du medecin
         Route::get('rendez-vous', [ConsultationController::class, 'getRendezVous']);
+        Route::get('rendez-vous/liste', [HoraireController::class, 'getRendezVousMedecin']);
+        Route::put('rendez-vous/{id}/confirmer', [HoraireController::class, 'confirmerRendezVous']);
+        Route::put('rendez-vous/{id}/refuser', [HoraireController::class, 'refuserRendezVous']);
+        Route::put('rendez-vous/{id}/definir-date-heure', [HoraireController::class, 'definirDateHeure']);
+
+        // Horaires et disponibilités
+        Route::put('horaires', [HoraireController::class, 'definirHoraires']);
+        Route::get('disponibilites/{medecinId}', [HoraireController::class, 'getDisponibilites']);
 
         // QR Code
         Route::post('qrcode/scanner', [QRCodeController::class, 'scanner']);
     });
 
-    // ── Patient ───────────────────────────────────────────────────────────
+    // Patient
     Route::middleware('role:patient')->prefix('patient')->group(function () {
         // Dossier médical
         Route::get('dossier',          [DossierMedicalController::class, 'monDossier']);
@@ -136,25 +158,27 @@ Route::middleware('auth:api')->group(function () {
         Route::get('rendez-vous',           [RendezVousController::class, 'index']);
         Route::post('rendez-vous',          [RendezVousController::class, 'store']);
         Route::put('rendez-vous/{id}/annuler',  [RendezVousController::class, 'annuler']);
+        Route::put('rendez-vous/{id}/confirmer', [RendezVousController::class, 'confirmer']);
         Route::put('rendez-vous/{id}/modifier', [RendezVousController::class, 'modifier']);
+        Route::get('disponibilites/{medecinId}', [HoraireController::class, 'getDisponibilites']);
 
         // QR Code
-        Route::get('qrcode',           [QRCodeController::class, 'generer']);
+        Route::get('qrcode', [QRCodeController::class, 'generer']);
     });
 
-    // ── Pharmacien ────────────────────────────────────────────────────────
-    Route::middleware('role:pharmacien')->prefix('pharmacien')->group(function () {
-        Route::get('ordonnances',          [OrdonnanceController::class, 'index']);
-        Route::get('ordonnances/{id}',     [OrdonnanceController::class, 'show']);
-        Route::post('delivrances',         [DelivranceController::class, 'store']);
-        Route::get('delivrances',          [DelivranceController::class, 'index']);
+    // FHIR - Interopérabilité
+    Route::prefix('fhir')->group(function () {
+        Route::get('/status',              [FhirController::class, 'status']);
+        Route::get('/patient/{id}',        [FhirController::class, 'exportPatient']);
+        Route::get('/consultation/{id}',   [FhirController::class, 'exportConsultation']);
+        Route::get('/patients',            [FhirController::class, 'exportAllPatients']);
+        Route::post('/send',               [FhirController::class, 'sendToExternal']);
+        Route::post('/receive',            [FhirController::class, 'receive']);
     });
 
-    // ── Laborantin ────────────────────────────────────────────────────────
-    Route::middleware('role:laborantin')->prefix('laborantin')->group(function () {
-        Route::get('demandes',             [LaborantinDemandeAnalyseController::class, 'index']);
-        Route::get('demandes/{id}',        [LaborantinDemandeAnalyseController::class, 'show']);
-        Route::apiResource('resultats',    ResultatAnalyseController::class);
-        Route::post('resultats/{id}/envoyer', [ResultatAnalyseController::class, 'envoyer']);
+    // Chatbot IA
+    Route::prefix('chatbot')->group(function () {
+        Route::post('/chat',               [ChatbotController::class, 'chat']);
+        Route::get('/status',              [ChatbotController::class, 'status']);
     });
 });
