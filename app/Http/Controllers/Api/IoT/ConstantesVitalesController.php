@@ -12,6 +12,30 @@ use Illuminate\Support\Facades\Validator;
 
 class ConstantesVitalesController extends Controller
 {
+    public function monIndex(Request $request)
+    {
+        $patient = $request->user()->patient;
+        $request->merge(['patient_id' => $patient->id]);
+
+        return $this->index($request);
+    }
+
+    public function monLatest(Request $request)
+    {
+        $patient = $request->user()->patient;
+        $request->merge(['patient_id' => $patient->id]);
+
+        return $this->latest($request);
+    }
+
+    public function monHistorique(Request $request)
+    {
+        $patient = $request->user()->patient;
+        $request->merge(['patient_id' => $patient->id]);
+
+        return $this->historique($request);
+    }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [

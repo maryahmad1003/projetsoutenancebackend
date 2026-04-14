@@ -10,6 +10,18 @@ use Illuminate\Support\Str;
 
 class TeleconsultationController extends Controller
 {
+    public function mesTeleconsultations(Request $request)
+    {
+        $patient = $request->user()->patient;
+
+        $teleconsultations = Teleconsultation::where('patient_id', $patient->id)
+            ->with(['medecin.user', 'consultation'])
+            ->orderBy('date_debut', 'desc')
+            ->paginate($request->get('per_page', 20));
+
+        return response()->json($teleconsultations);
+    }
+
     /**
      * @OA\Get(
      *     path="/api/medecin/teleconsultations",

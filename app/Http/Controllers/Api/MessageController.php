@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class MessageController extends Controller
@@ -37,38 +38,93 @@ class MessageController extends Controller
     public function conversations(Request $request)
     {
         $userId = $request->user()->id;
+        $perPage = max(5, min(50, (int) $request->query('per_page', 20)));
+        $search = trim((string) $request->query('search', ''));
 
-        $conversations = Message::where('expediteur_id', $userId)
-            ->orWhere('destinataire_id', $userId)
-            ->with(['expediteur', 'destinataire'])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->groupBy(function ($message) use ($userId) {
-                return $message->expediteur_id === $userId
-                    ? $message->destinataire_id
-                    : $message->expediteur_id;
+        $baseQuery = Message::query()
+            ->where(function ($query) use ($userId) {
+                $query->where('expediteur_id', $userId)
+                    ->orWhere('destinataire_id', $userId);
             })
-            ->map(function ($messages, $interlocuteurId) use ($userId) {
-                $dernier    = $messages->first();
-                $interlocuteur = $dernier->expediteur_id === $userId
-                    ? $dernier->destinataire
-                    : $dernier->expediteur;
+            ->select([
+                'messages.id',
+                'messages.expediteur_id',
+                'messages.destinataire_id',
+                'messages.contenu',
+                'messages.created_at',
+                DB::raw("CASE WHEN messages.expediteur_id = {$userId} THEN messages.destinataire_id ELSE messages.expediteur_id END as interlocuteur_id"),
+            ]);
 
+        $latestByInterlocuteur = DB::query()
+            ->fromSub($baseQuery, 'm')
+            ->selectRaw('interlocuteur_id, MAX(created_at) as last_created_at')
+            ->groupBy('interlocuteur_id');
+
+        $latestMessageIds = DB::query()
+            ->fromSub($baseQuery, 'm')
+            ->joinSub($latestByInterlocuteur, 'latest', function ($join) {
+                $join->on('m.interlocuteur_id', '=', 'latest.interlocuteur_id')
+                    ->on('m.created_at', '=', 'latest.last_created_at');
+            })
+            ->selectRaw('m.interlocuteur_id, MAX(m.id) as last_message_id')
+            ->groupBy('m.interlocuteur_id');
+
+        $conversations = DB::table('messages as m')
+            ->joinSub($latestMessageIds, 'lm', function ($join) {
+                $join->on('m.id', '=', 'lm.last_message_id');
+            })
+            ->join('users as u', 'u.id', '=', 'lm.interlocuteur_id')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('u.nom', 'like', "%{$search}%")
+                        ->orWhere('u.prenom', 'like', "%{$search}%");
+                });
+            })
+            ->orderByDesc('m.created_at')
+            ->select([
+                'lm.interlocuteur_id',
+                'u.id',
+                'u.nom',
+                'u.prenom',
+                'u.role',
+                'u.photo_profil',
+                'm.contenu as dernier_message',
+                'm.created_at as dernier_message_at',
+            ])
+            ->paginate($perPage);
+
+        $interlocuteurIds = collect($conversations->items())
+            ->pluck('interlocuteur_id')
+            ->filter()
+            ->values();
+
+        $nonLusParInterlocuteur = Message::query()
+            ->where('destinataire_id', $userId)
+            ->where('lu', false)
+            ->when($interlocuteurIds->isNotEmpty(), function ($query) use ($interlocuteurIds) {
+                $query->whereIn('expediteur_id', $interlocuteurIds->all());
+            })
+            ->selectRaw('expediteur_id, COUNT(*) as total')
+            ->groupBy('expediteur_id')
+            ->pluck('total', 'expediteur_id');
+
+        $conversations->setCollection(
+            $conversations->getCollection()->map(function ($item) use ($nonLusParInterlocuteur) {
                 return [
-                    'interlocuteur_id'  => $interlocuteurId,
-                    'interlocuteur'     => [
-                        'id'     => $interlocuteur->id,
-                        'nom'    => $interlocuteur->nom,
-                        'prenom' => $interlocuteur->prenom,
-                        'role'   => $interlocuteur->role,
-                        'photo_profil' => $interlocuteur->photo_profil,
+                    'interlocuteur_id' => (int) $item->interlocuteur_id,
+                    'interlocuteur' => [
+                        'id' => (int) $item->id,
+                        'nom' => $item->nom,
+                        'prenom' => $item->prenom,
+                        'role' => $item->role,
+                        'photo_profil' => $item->photo_profil,
                     ],
-                    'dernier_message'   => $dernier->contenu,
-                    'dernier_message_at'=> $dernier->created_at,
-                    'non_lus'           => $messages->where('destinataire_id', $userId)->where('lu', false)->count(),
+                    'dernier_message' => $item->dernier_message,
+                    'dernier_message_at' => $item->dernier_message_at,
+                    'non_lus' => (int) ($nonLusParInterlocuteur[$item->interlocuteur_id] ?? 0),
                 ];
             })
-            ->values();
+        );
 
         return response()->json($conversations);
     }
@@ -93,6 +149,7 @@ class MessageController extends Controller
     public function index(Request $request, int $userId)
     {
         $moi = $request->user()->id;
+        $perPage = max(10, min(100, (int) $request->get('per_page', 50)));
 
         $messages = Message::where(function ($q) use ($moi, $userId) {
                 $q->where('expediteur_id', $moi)->where('destinataire_id', $userId);
@@ -101,8 +158,12 @@ class MessageController extends Controller
                 $q->where('expediteur_id', $userId)->where('destinataire_id', $moi);
             })
             ->with(['expediteur:id,nom,prenom,role,photo_profil'])
-            ->orderBy('created_at', 'asc')
-            ->paginate($request->get('per_page', 50));
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        $messages->setCollection(
+            $messages->getCollection()->reverse()->values()
+        );
 
         Message::where('expediteur_id', $userId)
             ->where('destinataire_id', $moi)
@@ -214,6 +275,8 @@ class MessageController extends Controller
     public function contacts(Request $request)
     {
         $user = $request->user();
+        $perPage = max(10, min(100, (int) $request->query('per_page', 20)));
+        $search = trim((string) $request->query('search', ''));
 
         $rolesAccessibles = match ($user->role) {
             'medecin'        => ['patient', 'pharmacien', 'laborantin', 'administrateur'],
@@ -227,9 +290,15 @@ class MessageController extends Controller
         $contacts = User::whereIn('role', $rolesAccessibles)
             ->where('id', '!=', $user->id)
             ->where('est_actif', true)
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('nom', 'like', "%{$search}%")
+                        ->orWhere('prenom', 'like', "%{$search}%");
+                });
+            })
             ->select('id', 'nom', 'prenom', 'role', 'photo_profil')
             ->orderBy('nom')
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($contacts);
     }

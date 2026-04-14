@@ -149,6 +149,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('historique',       [DossierMedicalController::class, 'monHistorique']);
         Route::get('prescriptions',    [DossierMedicalController::class, 'mesPrescriptions']);
         Route::get('resultats',        [DossierMedicalController::class, 'mesResultats']);
+        Route::get('teleconsultations', [TeleconsultationController::class, 'mesTeleconsultations']);
 
         // Carnet de vaccination
         Route::get('vaccination',           [CarnetVaccinationController::class, 'show']);
@@ -162,8 +163,41 @@ Route::middleware('auth:api')->group(function () {
         Route::put('rendez-vous/{id}/modifier', [RendezVousController::class, 'modifier']);
         Route::get('disponibilites/{medecinId}', [HoraireController::class, 'getDisponibilites']);
 
+        // Constantes vitales
+        Route::get('constantes-vitales', [ConstantesVitalesController::class, 'monIndex']);
+        Route::get('constantes-vitales/latest', [ConstantesVitalesController::class, 'monLatest']);
+        Route::get('constantes-vitales/historique', [ConstantesVitalesController::class, 'monHistorique']);
+
         // QR Code
         Route::get('qrcode', [QRCodeController::class, 'generer']);
+    });
+
+    // Pharmacien
+    Route::middleware('role:pharmacien')->prefix('pharmacien')->group(function () {
+        Route::get('ordonnances', [OrdonnanceController::class, 'index']);
+        Route::get('ordonnances/{id}', [OrdonnanceController::class, 'show']);
+        Route::get('delivrances', [DelivranceController::class, 'index']);
+        Route::post('delivrances', [DelivranceController::class, 'store']);
+    });
+
+    // Laborantin
+    Route::middleware('role:laborantin')->prefix('laborantin')->group(function () {
+        Route::get('demandes', [LaborantinDemandeAnalyseController::class, 'index']);
+        Route::get('demandes/{id}', [LaborantinDemandeAnalyseController::class, 'show']);
+        Route::get('resultats', [ResultatAnalyseController::class, 'index']);
+        Route::post('resultats', [ResultatAnalyseController::class, 'store']);
+        Route::get('resultats/{id}', [ResultatAnalyseController::class, 'show']);
+        Route::put('resultats/{id}', [ResultatAnalyseController::class, 'update']);
+        Route::delete('resultats/{id}', [ResultatAnalyseController::class, 'destroy']);
+        Route::post('resultats/{id}/envoyer', [ResultatAnalyseController::class, 'envoyer']);
+    });
+
+    // IoT / synchronisation objets connectés
+    Route::prefix('iot')->group(function () {
+        Route::post('constantes', [ConstantesVitalesController::class, 'store']);
+        Route::get('constantes', [ConstantesVitalesController::class, 'index']);
+        Route::post('constantes/sync', [ConstantesVitalesController::class, 'sync']);
+        Route::get('devices', [ConstantesVitalesController::class, 'devices']);
     });
 
     // FHIR - Interopérabilité
