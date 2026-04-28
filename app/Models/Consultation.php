@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\DataEncryptionService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -34,6 +35,86 @@ class Consultation extends Model
         'prochain_rdv' => 'date',
     ];
 
+    public function setDiagnosticAttribute($value): void
+    {
+        $this->attributes['diagnostic'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getDiagnosticAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setNotesAttribute($value): void
+    {
+        $this->attributes['notes'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getNotesAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setExamenCliniqueAttribute($value): void
+    {
+        $this->attributes['examen_clinique'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getExamenCliniqueAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setAntecedentsSignalesAttribute($value): void
+    {
+        $this->attributes['antecedents_signales'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getAntecedentsSignalesAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setAllergiesSignaleesAttribute($value): void
+    {
+        $this->attributes['allergies_signalees'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getAllergiesSignaleesAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setTraitementEnCoursAttribute($value): void
+    {
+        $this->attributes['traitement_en_cours'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getTraitementEnCoursAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setObservationsGrossesseAttribute($value): void
+    {
+        $this->attributes['observations_grossesse'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getObservationsGrossesseAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
+    public function setRecommandationsAttribute($value): void
+    {
+        $this->attributes['recommandations'] = $this->encryptSensitiveValue($value);
+    }
+
+    public function getRecommandationsAttribute($value): mixed
+    {
+        return $this->decryptSensitiveValue($value);
+    }
+
     public function dossierMedical()
     {
         return $this->belongsTo(DossierMedical::class);
@@ -52,5 +133,27 @@ class Consultation extends Model
     public function teleconsultation()
     {
         return $this->hasOne(Teleconsultation::class);
+    }
+
+    private function encryptSensitiveValue(mixed $value): mixed
+    {
+        if (!is_string($value) || $value === '') {
+            return $value;
+        }
+
+        $service = app(DataEncryptionService::class);
+
+        return $service->estChiffre($value)
+            ? $value
+            : $service->chiffrer($value);
+    }
+
+    private function decryptSensitiveValue(mixed $value): mixed
+    {
+        if (!is_string($value) || $value === '') {
+            return $value;
+        }
+
+        return app(DataEncryptionService::class)->dechiffrer($value) ?? $value;
     }
 }

@@ -14,15 +14,19 @@ class ProtectedRoutesCoverageTest extends TestCase
     {
         $routes = [
             '/api/patient/teleconsultations',
+            '/api/patient/campagnes',
             '/api/patient/constantes-vitales',
             '/api/patient/constantes-vitales/latest',
             '/api/patient/constantes-vitales/historique?type=temperature',
+            '/api/admin/roles-permissions',
+            '/api/admin/securite',
             '/api/pharmacien/ordonnances',
             '/api/pharmacien/delivrances',
             '/api/laborantin/demandes',
             '/api/laborantin/resultats',
             '/api/iot/constantes',
             '/api/iot/devices?patient_id=1',
+            '/api/medecin/tableau-bord',
         ];
 
         foreach ($routes as $route) {

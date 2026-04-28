@@ -3,6 +3,13 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Administrateur;
+use App\Models\CarnetVaccination;
+use App\Models\DossierMedical;
+use App\Models\Laborantin;
+use App\Models\Medecin;
+use App\Models\Patient;
+use App\Models\Pharmacien;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -86,13 +93,23 @@ class UserManagementController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $rules = [
             'nom' => 'required|string',
             'prenom' => 'required|string',
             'email' => 'required|email|unique:users',
             'password' => 'required|string|min:8',
             'role' => 'required|in:medecin,patient,administrateur,pharmacien,laborantin',
-        ]);
+            'telephone' => 'nullable|string',
+        ];
+
+        if ($request->role === 'patient') {
+            $rules['date_naissance'] = 'required|date';
+            $rules['sexe'] = 'required|in:M,F';
+            $rules['adresse'] = 'nullable|string';
+            $rules['groupe_sanguin'] = 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-';
+        }
+
+        $request->validate($rules);
 
         $user = User::create([
             'nom' => $request->nom,
@@ -104,6 +121,8 @@ class UserManagementController extends Controller
             'langue' => $request->langue ?? 'fr',
             'est_actif' => true,
         ]);
+
+        $this->ensureRoleProfile($user, $request);
 
         return response()->json(['message' => 'Utilisateur créé', 'user' => $user], 201);
     }
@@ -163,7 +182,36 @@ class UserManagementController extends Controller
     public function update(Request $request, string $id)
     {
         $user = User::findOrFail($id);
-        $user->update($request->only(['nom', 'prenom', 'email', 'telephone', 'role', 'langue', 'est_actif']));
+        $nextRole = $request->input('role', $user->role);
+
+        $rules = [
+            'nom' => 'sometimes|string',
+            'prenom' => 'sometimes|string',
+            'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'telephone' => 'nullable|string',
+            'password' => 'sometimes|string|min:8',
+            'role' => 'sometimes|in:medecin,patient,administrateur,pharmacien,laborantin',
+            'langue' => 'nullable|in:fr,wo,en',
+            'est_actif' => 'sometimes|boolean',
+        ];
+
+        if ($nextRole === 'patient') {
+            $rules['date_naissance'] = $user->patient ? 'sometimes|date' : 'required|date';
+            $rules['sexe'] = $user->patient ? 'sometimes|in:M,F' : 'required|in:M,F';
+            $rules['adresse'] = 'nullable|string';
+            $rules['groupe_sanguin'] = 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-';
+        }
+
+        $validated = $request->validate($rules);
+
+        if (!empty($validated['password'])) {
+            $validated['password'] = Hash::make($validated['password']);
+        } else {
+            unset($validated['password']);
+        }
+
+        $user->update($validated);
+        $this->ensureRoleProfile($user, $request);
 
         return response()->json(['message' => 'Utilisateur modifié', 'user' => $user]);
     }
@@ -189,5 +237,54 @@ class UserManagementController extends Controller
     {
         User::findOrFail($id)->delete();
         return response()->json(['message' => 'Utilisateur supprimé']);
+    }
+
+    private function ensureRoleProfile(User $user, Request $request): void
+    {
+        switch ($user->role) {
+            case 'patient':
+                $patient = $user->patient;
+
+                if (!$patient) {
+                    $patient = Patient::create([
+                        'user_id' => $user->id,
+                        'num_dossier' => 'DS-' . str_pad($user->id, 6, '0', STR_PAD_LEFT),
+                        'date_naissance' => $request->date_naissance,
+                        'sexe' => $request->sexe,
+                        'adresse' => $request->adresse,
+                        'groupe_sanguin' => $request->groupe_sanguin,
+                    ]);
+                } else {
+                    $patient->update(array_filter([
+                        'date_naissance' => $request->input('date_naissance'),
+                        'sexe' => $request->input('sexe'),
+                        'adresse' => $request->input('adresse'),
+                        'groupe_sanguin' => $request->input('groupe_sanguin'),
+                    ], fn ($value) => $value !== null));
+                }
+
+                DossierMedical::firstOrCreate(
+                    ['patient_id' => $patient->id],
+                    ['numero_dossier' => 'DM-' . str_pad($patient->id, 6, '0', STR_PAD_LEFT)]
+                );
+                CarnetVaccination::firstOrCreate(['patient_id' => $patient->id]);
+                break;
+
+            case 'medecin':
+                Medecin::firstOrCreate(['user_id' => $user->id]);
+                break;
+
+            case 'administrateur':
+                Administrateur::firstOrCreate(['user_id' => $user->id]);
+                break;
+
+            case 'pharmacien':
+                Pharmacien::firstOrCreate(['user_id' => $user->id]);
+                break;
+
+            case 'laborantin':
+                Laborantin::firstOrCreate(['user_id' => $user->id]);
+                break;
+        }
     }
 }

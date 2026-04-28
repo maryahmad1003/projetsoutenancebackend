@@ -48,6 +48,9 @@ class StatistiqueController extends Controller
      */
     public function index()
     {
+        $today = today();
+        $endOfWeek = today()->copy()->endOfWeek();
+
         $stats = [
             'total_utilisateurs' => User::count(),
             'total_patients' => Patient::count(),
@@ -61,6 +64,12 @@ class StatistiqueController extends Controller
             'consultations_ce_mois' => Consultation::whereMonth('date', now()->month)->whereYear('date', now()->year)->count(),
             'rdv_en_attente' => RendezVous::where('statut', 'en_attente')->count(),
             'rdv_aujourdhui' => RendezVous::whereDate('date_heure', today())->count(),
+            'rdv_a_venir' => RendezVous::whereDate('date_heure', '>=', $today)
+                ->whereIn('statut', ['confirme', 'en_attente'])
+                ->count(),
+            'rdv_cette_semaine' => RendezVous::whereBetween('date_heure', [$today->copy()->startOfDay(), $endOfWeek->copy()->endOfDay()])
+                ->whereIn('statut', ['confirme', 'en_attente'])
+                ->count(),
 
             'patients_par_mois' => Patient::select(
                 DB::raw("EXTRACT(MONTH FROM created_at) as mois"),

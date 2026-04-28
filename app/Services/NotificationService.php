@@ -11,22 +11,37 @@ use Illuminate\Database\Eloquent\Collection;
 class NotificationService
 {
     // Canaux disponibles
-    const CANAL_INTERNE = 'interne';
+    const CANAL_INTERNE = 'push';
     const CANAL_SMS     = 'sms';
     const CANAL_EMAIL   = 'email';
 
     // Types de notifications
-    const TYPE_RENDEZ_VOUS  = 'rendez_vous';
+    const TYPE_RENDEZ_VOUS  = 'rappel_rdv';
     const TYPE_PRESCRIPTION = 'prescription';
-    const TYPE_RESULTAT     = 'resultat';
-    const TYPE_ALERTE       = 'alerte';
-    const TYPE_INFO         = 'info';
+    const TYPE_RESULTAT     = 'resultat_dispo';
+    const TYPE_ALERTE       = 'suivi';
+    const TYPE_INFO         = 'suivi';
 
     /**
      * Envoyer une notification à un utilisateur.
      */
     public function envoyer(User $user, string $type, string $message, string $canal = self::CANAL_INTERNE): Notification
     {
+        $type = match ($type) {
+            'rendez_vous' => self::TYPE_RENDEZ_VOUS,
+            'resultat' => self::TYPE_RESULTAT,
+            'alerte', 'info' => self::TYPE_INFO,
+            default => in_array($type, ['rappel_rdv', 'resultat_dispo', 'prescription', 'campagne', 'suivi', 'medicament_pret'], true)
+                ? $type
+                : self::TYPE_INFO,
+        };
+
+        $canal = match ($canal) {
+            'application', 'interne' => self::CANAL_INTERNE,
+            'sms', 'email', 'push' => $canal,
+            default => self::CANAL_INTERNE,
+        };
+
         $notification = Notification::create([
             'user_id'    => $user->id,
             'type'       => $type,

@@ -128,6 +128,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Clé de chiffrement métier
+    |--------------------------------------------------------------------------
+    |
+    | Cette clé est dédiée au chiffrement applicatif des champs médicaux
+    | sensibles. Si elle n'est pas définie, l'application retombe sur APP_KEY.
+    |
+    */
+
+    'encryption_key' => env('APP_ENCRYPTION_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Maintenance Mode Driver
     |--------------------------------------------------------------------------
     |

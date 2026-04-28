@@ -240,6 +240,13 @@ class ProfilSeeder extends Seeder
                 'created_at'   => now(),
                 'updated_at'   => now(),
             ],
+            [
+                'user_id'      => $userId('pharmacien3@docsecur.sn'),
+                'pharmacie_id' => $pharmacieId('Pharmacie Centrale DocSecur'),
+                'num_licence'  => 'LIC-PH-2024-003',
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ],
         ]);
 
         // ── LABORANTINS ────────────────────────────────────────────────────

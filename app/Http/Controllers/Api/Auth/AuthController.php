@@ -6,17 +6,16 @@ use App\Models\User;
 use App\Models\Patient;
 use App\Models\DossierMedical;
 use App\Models\CarnetVaccination;
-use App\Models\Medecin;
-use App\Models\Administrateur;
-use App\Models\Pharmacien;
-use App\Models\Laborantin;
+use App\Services\QRCodeService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    public function __construct(private QRCodeService $qrCodeService) {}
+
     /**
      * @OA\Post(
      *     path="/api/register",
@@ -33,7 +32,7 @@ class AuthController extends Controller
      *             @OA\Property(property="password", type="string", format="password", example="Secret123!"),
      *             @OA\Property(property="password_confirmation", type="string", format="password", example="Secret123!"),
      *             @OA\Property(property="telephone", type="string", example="+221771234567"),
-     *             @OA\Property(property="role", type="string", enum={"medecin","patient","administrateur","pharmacien","laborantin"}, example="patient"),
+     *             @OA\Property(property="role", type="string", enum={"patient"}, example="patient"),
      *             @OA\Property(property="langue", type="string", enum={"fr","wo","en"}, example="fr"),
      *             @OA\Property(property="date_naissance", type="string", format="date", example="1990-05-15", description="Requis si rôle = patient"),
      *             @OA\Property(property="sexe", type="string", enum={"M","F"}, example="M", description="Requis si rôle = patient"),
@@ -61,66 +60,76 @@ class AuthController extends Controller
             'email' => 'required|string|email|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'telephone' => 'nullable|string',
-            'role' => 'required|in:medecin,patient,administrateur,pharmacien,laborantin',
+            'role' => 'required|in:patient',
             'langue' => 'nullable|in:fr,wo,en',
+            'date_naissance' => 'required_if:role,patient|nullable|date',
+            'sexe' => 'required_if:role,patient|nullable|in:M,F',
+            'adresse' => 'nullable|string|max:255',
+            'groupe_sanguin' => 'nullable|string|max:10',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $user = User::create([
-            'nom' => $request->nom,
-            'prenom' => $request->prenom,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'telephone' => $request->telephone,
-            'role' => $request->role,
-            'langue' => $request->langue ?? 'fr',
-            'est_actif' => true,
-        ]);
+        $payload = DB::transaction(function () use ($request) {
+            $user = User::create([
+                'nom' => $request->nom,
+                'prenom' => $request->prenom,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'telephone' => $request->telephone,
+                'role' => $request->role,
+                'langue' => $request->langue ?? 'fr',
+                'est_actif' => true,
+            ]);
 
-        // Créer le profil selon le rôle
-        switch ($user->role) {
-            case 'patient':
-                $patient = Patient::create([
-                    'user_id'         => $user->id,
-                    'num_dossier'     => 'DS-' . str_pad($user->id, 6, '0', STR_PAD_LEFT),
-                    'date_naissance'  => $request->date_naissance,
-                    'sexe'            => $request->sexe ?? 'M',
-                    'adresse'         => $request->adresse,
-                    'groupe_sanguin'  => $request->groupe_sanguin,
-                ]);
-                DossierMedical::create([
-                    'patient_id'     => $patient->id,
-                    'numero_dossier' => 'DM-' . str_pad($patient->id, 6, '0', STR_PAD_LEFT),
-                ]);
-                CarnetVaccination::create(['patient_id' => $patient->id]);
-                break;
+            $patientQrCode = null;
+            $patientMeta = null;
 
-            case 'medecin':
-                Medecin::create(['user_id' => $user->id]);
-                break;
+            $patient = Patient::create([
+                'user_id'         => $user->id,
+                'num_dossier'     => 'DS-' . str_pad($user->id, 6, '0', STR_PAD_LEFT),
+                'date_naissance'  => $request->date_naissance,
+                'sexe'            => $request->sexe ?? 'M',
+                'adresse'         => $request->adresse,
+                'groupe_sanguin'  => $request->groupe_sanguin,
+            ]);
 
-            case 'administrateur':
-                Administrateur::create(['user_id' => $user->id]);
-                break;
+            $dossier = DossierMedical::create([
+                'patient_id'     => $patient->id,
+                'numero_dossier' => 'DM-' . str_pad($patient->id, 6, '0', STR_PAD_LEFT),
+            ]);
 
-            case 'pharmacien':
-                Pharmacien::create(['user_id' => $user->id]);
-                break;
+            CarnetVaccination::create(['patient_id' => $patient->id]);
 
-            case 'laborantin':
-                Laborantin::create(['user_id' => $user->id]);
-                break;
-        }
+            $qrCode = $this->qrCodeService->genererQRCode($patient);
+            $patientQrCode = [
+                'qr_code' => base64_encode($qrCode['svg']),
+                'payload' => $qrCode['payload'],
+                'expires_at' => $qrCode['expires'],
+            ];
+            $patientMeta = [
+                'id' => $patient->id,
+                'num_dossier' => $patient->num_dossier,
+                'numero_dossier_medical' => $dossier->numero_dossier,
+            ];
 
-        $token = $user->createToken('DocSecur')->accessToken;
+            return [
+                'user' => $user->load(['patient']),
+                'patient_qr_code' => $patientQrCode,
+                'patient_meta' => $patientMeta,
+            ];
+        });
+
+        $token = $payload['user']->createToken('DocSecur')->accessToken;
 
         return response()->json([
             'message' => 'Inscription réussie',
-            'user' => $user,
+            'user' => $payload['user'],
             'token' => $token,
+            'patient' => $payload['patient_meta'],
+            'patient_qr_code' => $payload['patient_qr_code'],
         ], 201);
     }
 

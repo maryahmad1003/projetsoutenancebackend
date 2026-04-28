@@ -30,11 +30,14 @@ class RendezVousController extends Controller
             'medecin_id' => 'required|exists:medecins,id',
             'date_heure' => 'required|date|after:now',
             'motif' => 'required|string',
-            'type' => 'nullable|in:consultation,suivi,urgence,teleconsultation',
+            'type' => 'nullable|in:presentiel,teleconsultation,consultation,suivi,urgence',
         ]);
 
         $medecin = Medecin::with('user')->findOrFail($request->medecin_id);
-        $type = $request->type ?? 'consultation';
+        $type = $request->type ?? 'presentiel';
+        if ($type === 'presentiel') {
+            $type = 'consultation';
+        }
         $dateHeure = $request->date_heure;
 
         if ($type !== 'teleconsultation') {
@@ -49,7 +52,7 @@ class RendezVousController extends Controller
         $rdv = RendezVous::create([
             'patient_id' => $request->user()->patient->id,
             'medecin_id' => $request->medecin_id,
-            'date_heure' => $type === 'teleconsultation' ? null : $dateHeure,
+            'date_heure' => $dateHeure,
             'duree' => $request->duree ?? 30,
             'motif' => $request->motif,
             'statut' => 'en_attente',
@@ -81,7 +84,7 @@ class RendezVousController extends Controller
         Log::info('[RDV] Nouveau rendez-vous créé pour médecin ' . $medecin->id . ' par patient ' . $request->user()->patient->id . ' (type: ' . $type . ')');
 
         return response()->json([
-            'message' => $type === 'teleconsultation' ? 'Demande de téléconsultation créée. Le médecin définira la date et l\'heure.' : 'Rendez-vous créé et médecin notifié',
+            'message' => $type === 'teleconsultation' ? 'Demande de téléconsultation envoyée au médecin.' : 'Demande de rendez-vous envoyée au médecin.',
             'rendez_vous' => $rdv->load('medecin.user'),
             'statut' => 'en_attente',
         ], 201);

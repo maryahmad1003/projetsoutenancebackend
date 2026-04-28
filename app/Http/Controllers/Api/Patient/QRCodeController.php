@@ -3,12 +3,13 @@
 namespace App\Http\Controllers\Api\Patient;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
 use Illuminate\Http\Request;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use App\Services\QRCodeService;
 
 class QRCodeController extends Controller
 {
+    public function __construct(private QRCodeService $qrCodeService) {}
+
     /**
      * @OA\Get(
      *     path="/api/patient/qrcode",
@@ -30,28 +31,19 @@ class QRCodeController extends Controller
     public function monQRCode(Request $request)
     {
         $patient = $request->user()->patient;
-        $qrCode = QrCode::size(300)->generate(json_encode([
-            'patient_id' => $patient->id,
-            'num_dossier' => $patient->num_dossier,
-            'nom' => $request->user()->nom,
-            'prenom' => $request->user()->prenom,
-        ]));
+        $qrCode = $this->qrCodeService->genererQRCode($patient);
 
         return response()->json([
-            'qr_code' => base64_encode($qrCode),
+            'qr_code' => base64_encode($qrCode['svg']),
             'num_dossier' => $patient->num_dossier,
+            'payload' => $qrCode['payload'],
+            'expires_at' => $qrCode['expires'],
         ]);
     }
 
     public function scan(string $code)
     {
-        $patient = Patient::where('num_dossier', $code)
-            ->with([
-                'user',
-                'dossierMedical.consultations.medecin.user',
-                'dossierMedical.resultatsAnalyses',
-                'carnetVaccination.vaccins',
-            ])->first();
+        $patient = $this->resolvePatientFromQrInput($code);
 
         if (!$patient) {
             return response()->json(['message' => 'Patient non trouvé'], 404);
@@ -90,5 +82,48 @@ class QRCodeController extends Controller
     public function generer(Request $request)
     {
         return $this->monQRCode($request);
+    }
+
+    private function resolvePatientFromQrInput(string $code)
+    {
+        $raw = trim($code);
+        $payload = $this->extractPayload($raw);
+
+        if (preg_match('#/urgence/patient/([a-f0-9]{64})$#i', $payload, $matches)) {
+            $patient = $this->qrCodeService->validerToken($matches[1]);
+            if ($patient) {
+                return $patient->load([
+                    'user',
+                    'dossierMedical.consultations.medecin.user',
+                    'dossierMedical.resultatsAnalyses',
+                    'carnetVaccination.vaccins',
+                ]);
+            }
+        }
+
+        return \App\Models\Patient::where('num_dossier', $payload)
+            ->with([
+                'user',
+                'dossierMedical.consultations.medecin.user',
+                'dossierMedical.resultatsAnalyses',
+                'carnetVaccination.vaccins',
+            ])->first();
+    }
+
+    private function extractPayload(string $code): string
+    {
+        $json = json_decode($code, true);
+
+        if (is_array($json)) {
+            if (!empty($json['payload'])) {
+                return trim((string) $json['payload']);
+            }
+
+            if (!empty($json['num_dossier'])) {
+                return trim((string) $json['num_dossier']);
+            }
+        }
+
+        return $code;
     }
 }

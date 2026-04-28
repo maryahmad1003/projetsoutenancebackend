@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Patient;
 use App\Models\DossierMedical;
 use App\Models\CarnetVaccination;
+use App\Models\Pharmacie;
 use App\Models\User;
+use App\Services\QRCodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -14,6 +16,8 @@ use Illuminate\Support\Str;
 
 class DossierMedicalController extends Controller
 {
+    public function __construct(private QRCodeService $qrCodeService) {}
+
     public function index(Request $request)
     {
         $patients = Patient::with(['user', 'dossierMedical'])->paginate(20);
@@ -50,10 +54,25 @@ class DossierMedicalController extends Controller
     {
         $patient = $request->user()->patient;
         $dossier = DossierMedical::where('patient_id', $patient->id)
-            ->with(['consultations.medecin.user', 'consultations.prescriptions.medicaments', 'resultatsAnalyses'])
+            ->with(['patient', 'consultations.medecin.user', 'consultations.prescriptions.medicaments', 'resultatsAnalyses'])
             ->first();
 
-        return response()->json($dossier);
+        if (!$dossier) {
+            return response()->json(null);
+        }
+
+        return response()->json([
+            'id' => $dossier->id,
+            'patient_id' => $dossier->patient_id,
+            'numero_dossier' => $dossier->numero_dossier,
+            'groupe_sanguin' => $patient->groupe_sanguin,
+            'antecedents' => $dossier->antecedents,
+            'allergies' => $dossier->allergies,
+            'notes_generales' => $dossier->notes_generales,
+            'date_creation' => optional($dossier->created_at)->toISOString(),
+            'consultations' => $dossier->consultations,
+            'resultats_analyses' => $dossier->resultatsAnalyses,
+        ]);
     }
 
     /**
@@ -180,10 +199,17 @@ class DossierMedicalController extends Controller
 
         CarnetVaccination::create(['patient_id' => $patient->id]);
 
+        $qrCode = $this->qrCodeService->genererQRCode($patient);
+
         return response()->json([
             'message'      => 'Patient créé avec succès',
             'patient'      => $patient->load('user'),
             'mot_de_passe' => $motDePasse,
+            'qr_code' => [
+                'svg' => base64_encode($qrCode['svg']),
+                'payload' => $qrCode['payload'],
+                'expires_at' => $qrCode['expires'],
+            ],
         ], 201);
     }
 

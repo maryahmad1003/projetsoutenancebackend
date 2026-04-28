@@ -6,12 +6,16 @@ use App\Http\Controllers\Api\Auth\OtpController;
 use App\Http\Controllers\Api\Admin\UserManagementController;
 use App\Http\Controllers\Api\Admin\CentreSanteController;
 use App\Http\Controllers\Api\Admin\CampagneController;
+use App\Http\Controllers\Api\Admin\RolePermissionController;
+use App\Http\Controllers\Api\Admin\SecuriteController;
 use App\Http\Controllers\Api\Admin\StatistiqueController;
 use App\Http\Controllers\Api\Medecin\ConsultationController;
 use App\Http\Controllers\Api\Medecin\PrescriptionController;
 use App\Http\Controllers\Api\Medecin\TeleconsultationController;
+use App\Http\Controllers\Api\Medecin\TableauBordController;
 use App\Http\Controllers\Api\Medecin\DemandeAnalyseController as MedecinDemandeAnalyseController;
 use App\Http\Controllers\Api\Patient\DossierMedicalController;
+use App\Http\Controllers\Api\Patient\CampagneController as PatientCampagneController;
 use App\Http\Controllers\Api\Patient\RendezVousController;
 use App\Http\Controllers\Api\Patient\CarnetVaccinationController;
 use App\Http\Controllers\Api\Patient\QRCodeController;
@@ -93,6 +97,8 @@ Route::middleware('auth:api')->group(function () {
         Route::apiResource('utilisateurs',   UserManagementController::class);
         Route::apiResource('centres-sante',  CentreSanteController::class);
         Route::apiResource('campagnes',      CampagneController::class);
+        Route::get('roles-permissions',      [RolePermissionController::class, 'index']);
+        Route::get('securite',               [SecuriteController::class, 'index']);
         Route::get('statistiques',           [StatistiqueController::class, 'index']);
         Route::get('statistiques/centre/{id}', [StatistiqueController::class, 'parCentre']);
 
@@ -114,9 +120,11 @@ Route::middleware('auth:api')->group(function () {
 
         // Consultations
         Route::apiResource('consultations', ConsultationController::class);
+        Route::get('tableau-bord', [TableauBordController::class, 'index']);
 
         // Prescriptions
         Route::apiResource('prescriptions', PrescriptionController::class);
+        Route::get('pharmacies', [PrescriptionController::class, 'pharmacies']);
         Route::post('prescriptions/{id}/envoyer-pharmacie', [PrescriptionController::class, 'envoyerPharmacie']);
 
         // Téléconsultations
@@ -170,6 +178,9 @@ Route::middleware('auth:api')->group(function () {
 
         // QR Code
         Route::get('qrcode', [QRCodeController::class, 'generer']);
+
+        // Sensibilisation
+        Route::get('campagnes', [PatientCampagneController::class, 'index']);
     });
 
     // Pharmacien

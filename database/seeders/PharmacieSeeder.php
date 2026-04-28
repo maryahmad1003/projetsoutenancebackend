@@ -50,8 +50,20 @@ class PharmacieSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'nom'        => 'Pharmacie Centrale DocSecur',
+                'adresse'    => 'Centre de sante partenaire DocSecur, Dakar',
+                'telephone'  => '+221330000000',
+                'horaires'   => 'Lun-Sam: 08h-20h',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ];
 
-        DB::table('pharmacies')->insert($pharmacies);
+        DB::table('pharmacies')->upsert(
+            $pharmacies,
+            ['nom'],
+            ['adresse', 'telephone', 'horaires', 'updated_at']
+        );
     }
 }

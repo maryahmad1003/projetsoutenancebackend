@@ -186,6 +186,18 @@ class UserSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'nom'       => 'Ndao',
+                'prenom'    => 'Awa',
+                'email'     => 'pharmacien3@docsecur.sn',
+                'password'  => Hash::make('password'),
+                'telephone' => '+221771234532',
+                'role'      => 'pharmacien',
+                'langue'    => 'fr',
+                'est_actif' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
 
             // ─── LABORANTINS ─────────────────────────────────────────────
             [

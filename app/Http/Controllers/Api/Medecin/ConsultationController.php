@@ -16,8 +16,8 @@ class ConsultationController extends Controller
      * @OA\Get(
      *     path="/api/medecin/patients",
      *     tags={"Médecin - Patients"},
-     *     summary="Lister les patients du médecin",
-     *     description="Retourne la liste paginée des patients ayant eu au moins une consultation avec le médecin connecté.",
+     *     summary="Lister les patients",
+     *     description="Retourne la liste paginée de tous les patients disponibles dans la base.",
      *     security={{"bearerAuth":{}}},
      *     @OA\Parameter(name="search", in="query", description="Recherche par nom, prénom, téléphone ou numéro de dossier",
      *         @OA\Schema(type="string")
@@ -39,12 +39,7 @@ class ConsultationController extends Controller
             return response()->json(['message' => 'Profil médecin introuvable'], 404);
         }
 
-        $patientIds = Consultation::where('medecin_id', $medecin->id)
-            ->join('dossiers_medicaux', 'consultations.dossier_medical_id', '=', 'dossiers_medicaux.id')
-            ->pluck('dossiers_medicaux.patient_id')
-            ->unique();
-
-        $query = Patient::with('user')->whereIn('id', $patientIds);
+        $query = Patient::with('user');
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -277,6 +272,7 @@ class ConsultationController extends Controller
         $request->validate([
             'dossier_medical_id'  => 'nullable|required_without:patient_id|exists:dossiers_medicaux,id',
             'patient_id'          => 'nullable|required_without:dossier_medical_id|exists:patients,id',
+            'date_consultation'   => 'required|date',
             'motif'               => 'required|string',
             'type_consultation'   => 'nullable|in:presentiel,teleconsultation',
             'urgence'             => 'nullable|in:faible,moyenne,haute,critique',
@@ -304,7 +300,7 @@ class ConsultationController extends Controller
         $consultation = Consultation::create([
             'dossier_medical_id' => $dossierMedicalId,
             'medecin_id' => $medecin->id,
-            'date' => now(),
+            'date' => $request->date_consultation,
             'motif' => $request->motif,
             'diagnostic' => $request->diagnostic,
             'notes' => $request->notes,
@@ -349,7 +345,7 @@ class ConsultationController extends Controller
         Notification::create([
             'user_id' => $patient->user_id,
             'type' => 'suivi',
-            'message' => 'Votre consultation du ' . now()->format('d/m/Y') . ' a été enregistrée par Dr. ' . $request->user()->nom,
+            'message' => 'Votre consultation du ' . \Carbon\Carbon::parse($request->date_consultation)->format('d/m/Y') . ' a été enregistrée par Dr. ' . $request->user()->nom,
             'canal' => 'sms',
             'date_envoi' => now(),
         ]);

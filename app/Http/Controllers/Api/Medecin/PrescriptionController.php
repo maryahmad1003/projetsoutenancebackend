@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api\Medecin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Medicament;
+use App\Models\Pharmacie;
 use App\Models\Prescription;
 use App\Models\Notification;
 use Illuminate\Http\Request;
@@ -25,11 +27,27 @@ class PrescriptionController extends Controller
     {
         $medecin = $request->user()->medecin;
         $prescriptions = Prescription::where('medecin_id', $medecin->id)
-            ->with(['consultation.dossierMedical.patient.user', 'medicaments', 'pharmacie'])
+            ->with(['medecin.user', 'consultation.dossierMedical.patient.user', 'medicaments', 'pharmacie'])
             ->orderBy('date_emission', 'desc')
             ->paginate(20);
 
         return response()->json($prescriptions);
+    }
+
+    public function pharmacies()
+    {
+        if (Pharmacie::count() === 0) {
+            Pharmacie::ensureDefaultExists();
+        }
+
+        return response()->json(
+            Pharmacie::query()
+                ->withCount('pharmaciens')
+                ->orderByDesc('pharmaciens_count')
+                ->orderByRaw("CASE WHEN nom = 'Pharmacie Centrale DocSecur' THEN 0 ELSE 1 END")
+                ->orderBy('nom')
+                ->get(['id', 'nom', 'adresse', 'telephone'])
+        );
     }
 
     /**
@@ -75,37 +93,83 @@ class PrescriptionController extends Controller
             'consultation_id' => 'required|exists:consultations,id',
             'notes' => 'nullable|string',
             'pharmacie_id' => 'nullable|exists:pharmacies,id',
+            'envoyer_auto_pharmacie' => 'nullable|boolean',
+            'date_emission' => 'nullable|date',
+            'date_expiration' => 'nullable|date|after_or_equal:date_emission',
             'medicaments' => 'required|array|min:1',
-            'medicaments.*.medicament_id' => 'required|exists:medicaments,id',
+            'medicaments.*.medicament_id' => 'nullable|exists:medicaments,id',
+            'medicaments.*.nom' => 'required_without:medicaments.*.medicament_id|string',
+            'medicaments.*.dosage' => 'nullable|string',
+            'medicaments.*.forme' => 'nullable|in:comprime,sirop,injection,pommade,gelule,autre',
             'medicaments.*.posologie' => 'required|string',
             'medicaments.*.duree_traitement' => 'nullable|integer',
             'medicaments.*.quantite' => 'nullable|integer',
         ]);
 
         $medecin = $request->user()->medecin;
+        $pharmacieId = $request->pharmacie_id;
+
+        if ($request->boolean('envoyer_auto_pharmacie') && !$pharmacieId) {
+            $pharmacieId = Pharmacie::query()
+                ->whereHas('pharmaciens')
+                ->orderBy('nom')
+                ->value('id')
+                ?? Pharmacie::query()->orderBy('nom')->value('id')
+                ?? Pharmacie::ensureDefaultExists()->id;
+        }
 
         $prescription = Prescription::create([
             'consultation_id' => $request->consultation_id,
             'medecin_id' => $medecin->id,
             'numero' => 'RX-' . strtoupper(Str::random(8)),
-            'date_emission' => now(),
-            'date_expiration' => now()->addMonths(3),
-            'statut' => 'active',
+            'date_emission' => $request->date_emission ?? now(),
+            'date_expiration' => $request->date_expiration ?? now()->addMonths(3),
+            'statut' => ($request->boolean('envoyer_auto_pharmacie') && $pharmacieId) ? 'envoyee' : 'active',
             'notes' => $request->notes,
-            'pharmacie_id' => $request->pharmacie_id,
+            'pharmacie_id' => $pharmacieId,
         ]);
 
         foreach ($request->medicaments as $med) {
-            $prescription->medicaments()->attach($med['medicament_id'], [
+            $medicamentId = $med['medicament_id'] ?? null;
+
+            if (!$medicamentId) {
+                $nom = trim((string) ($med['nom'] ?? ''));
+                $dosage = isset($med['dosage']) && trim((string) $med['dosage']) !== ''
+                    ? trim((string) $med['dosage'])
+                    : null;
+                $forme = isset($med['forme']) && trim((string) $med['forme']) !== ''
+                    ? trim((string) $med['forme'])
+                    : 'comprime';
+
+                $medicament = Medicament::firstOrCreate(
+                    [
+                        'nom' => $nom,
+                        'dosage' => $dosage,
+                        'forme' => $forme,
+                    ],
+                    [
+                        'nom' => $nom,
+                        'dosage' => $dosage,
+                        'forme' => $forme,
+                    ]
+                );
+
+                $medicamentId = $medicament->id;
+            }
+
+            $prescription->medicaments()->attach($medicamentId, [
                 'posologie' => $med['posologie'],
                 'duree_traitement' => $med['duree_traitement'] ?? null,
                 'quantite' => $med['quantite'] ?? null,
             ]);
         }
 
+        $prescription->load(['medecin.user', 'medicaments', 'consultation.dossierMedical.patient.user', 'pharmacie']);
+
         return response()->json([
             'message' => 'Prescription créée avec succès',
-            'prescription' => $prescription->load('medicaments')
+            'prescription' => $prescription,
+            'envoyee_pharmacie' => $prescription->pharmacie_id !== null && $prescription->statut === 'envoyee',
         ], 201);
     }
 
@@ -139,12 +203,17 @@ class PrescriptionController extends Controller
     public function envoyerPharmacie(Request $request, string $id)
     {
         $request->validate([
-            'pharmacie_id' => 'required|exists:pharmacies,id',
+            'pharmacie_id' => 'nullable|exists:pharmacies,id',
         ]);
 
         $prescription = Prescription::findOrFail($id);
+        $pharmacieId = $request->pharmacie_id
+            ?? Pharmacie::query()->whereHas('pharmaciens')->orderBy('nom')->value('id')
+            ?? Pharmacie::query()->orderBy('nom')->value('id')
+            ?? Pharmacie::ensureDefaultExists()->id;
+
         $prescription->update([
-            'pharmacie_id' => $request->pharmacie_id,
+            'pharmacie_id' => $pharmacieId,
             'statut' => 'envoyee',
         ]);
 
